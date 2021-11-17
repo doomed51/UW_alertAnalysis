@@ -1,24 +1,27 @@
 from os import P_DETACH, replace
 from numpy.lib.npyio import load
-import pandas as pd 
-import matplotlib.pyplot as plt
-
 from openpyxl import workbook, load_workbook
 from openpyxl.worksheet import worksheet
+from sklearn.cluster import KMeans
+
+import pandas as pd 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 
 filePath = r"F:\workbench\UW_Alerts\UW_alerts.xlsx"
 #filePath = r"F:\workbench\Sandbox\splittest.xlsx"
-print('#########################################################')
+
 print('')
+print('#########################################################')
 print('Reading file:', filePath)
+print('Success!')
+print('#########################################################')
 print('')
 
 #load workbook
 workbook = load_workbook(filename=filePath)
-rawDF = pd.read_excel(filePath, 'Sheet1')
-
-print('Success!')
-print('#####################################################')
+rawDF = pd.read_excel(filePath, 'ask1IV50to200')
 
 #####
 # Util function
@@ -47,16 +50,7 @@ alertsDF['Time'] = pd.to_datetime(alertsDF['Time'])
 alertsDF['Option'].str.strip()
 
 alertsDF['Option'] = alertsDF['Option'].astype('str')
-
-# Remove all special symbols 
-spec_chars = ["$", "!",'"',"#","%","&","'","(",")",
-              "*","+",",","-",".","/",":",";","<",
-              "=",">","?","@","[","\\","]","^","_",
-              "`","{","|","}","~","–"]
-
-#for char in spec_chars:
 alertsDF['Option'] = alertsDF['Option'].str.strip()
-alertsDF['Option'] = alertsDF['Option'].astype('str')
 
 #splt the Option col into symbol and strike
 alertsDF[['Option', 'Strike']] = alertsDF['Option'].str.split('$', expand=True)
@@ -91,22 +85,35 @@ alertsDF['Max Loss %'] = alertsDF['Max Loss %'].str.replace('%', '', regex=True)
 alertsDF['Max Loss'] = alertsDF['Max Loss'].astype('float')
 alertsDF['Max Loss %'] = alertsDF['Max Loss %'].astype('float')
 
-# split up the cleaned up alertsDF into the following
-# < 50%
-# < 100% 
-# >= 100%
-# >= 200%
-# >= 1000%
+alertsDF.fillna(0, inplace=True)
+
+# < 0
+below0 = alertsDF.loc[alertsDF['Max Gain %'] <= 0]
+
+# 0 - 50
+below50 = alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 0)]
+
+# 50 - 100
+below100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]
+
+# 100 - 200
+over100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]
+
+# 200 - 1000
+over200 = alertsDF.loc[(alertsDF['Max Gain %'] <= 1000) & (alertsDF['Max Gain %'] > 200)]
+
+# > 1000
+over1000 = alertsDF.loc[(alertsDF['Max Gain %'] > 1000)]
 
 
 
 #####
 # print statistical info
 #####
-print(alertsDF.head(10))
-print(alertsDF.describe())
+#print(alertsDF.head(10))
+#print(alertsDF.describe())
 
-print('average max gain', alertsDF['Max Gain %'].mean())
+#print('average max gain', alertsDF['Max Gain %'].mean())
 
 
 #####
@@ -119,6 +126,61 @@ print('average max gain', alertsDF['Max Gain %'].mean())
 
 #alertsDF.plot.hist('Max Gain %', bins = 20)
 #alertsDF['Max Gain %'].plot.hist(bins=80)
-alertsDF['Max Loss %'].plot.hist(bins=80)
+#alertsDF['Max Loss %'].plot.hist(bins=80)
 
-plt.show()
+#####
+# Data slices for analysis
+#####
+X_allAlerts = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Max Loss %', 'Option Type', 'Sector', 'Underlying', '% Diff', 'OG ask', 'Time', 'Tier', 'Max Gain' ], axis=1 )
+
+X_optionType = below0.drop( ['Symbol', 'Expiry', 'Max Loss', 'Max Loss %', 'Sector', 'Underlying', '% Diff', 'OG ask', 'Time', 'Tier', 'Max Gain' ], axis=1 )
+
+X_Sector = over200.drop( ['Symbol', 'Expiry', 'Max Loss', 'Max Loss %', 'Option Type', 'Underlying', '% Diff', 'OG ask', 'Time', 'Tier', 'Max Gain' ], axis=1 )
+
+X_floatsOnly = below0.drop( ['Symbol', 'Expiry', 'Max Loss', 'Max Loss %', 'Option Type', 'Sector', 'Underlying', '% Diff', 'OG ask', 'Time', 'Tier', 'Max Gain' ], axis=1 )
+
+#####
+# clustering - elbow method 
+##
+# Results: 
+# All alerts -> 2 - 4
+# over200 -> 2 - 5
+#####
+def elbowMethod(dataframeOfFloats):
+    clusters = []
+
+    for i in range(1, 11):
+        km = KMeans(n_clusters=i).fit(dataframeOfFloats)
+        clusters.append(km.inertia_)
+
+    fig, ax = plt.subplots(figsize=(12,8))
+    sns.lineplot(x=list(range(1,11)), y=clusters, ax=ax)
+    ax.set_title('Searching for Elbow')
+    ax.set_xlabel('Clusters')
+    ax.set_ylabel('Intertia')
+
+    plt.show()
+
+#####
+# Clustering
+#####
+def plotCluster(myDF, numClusters):
+    km3 = KMeans(n_clusters = numClusters).fit(myDF)
+    myDF['Labels'] = km3.labels_ 
+    
+    plt.figure(figsize=(12, 8))
+    sns.pairplot( myDF, hue = 'Labels')
+
+    plt.show()
+
+#elbowMethod(X_floatsOnly)
+plotCluster(X_floatsOnly, 3)
+
+#print(X_allAlerts.head())
+
+#####
+# plotting 
+#####
+# Plots scatter of each column 
+#sns.pairplot(X_optionType, hue='Option Type', aspect=1.5)
+
