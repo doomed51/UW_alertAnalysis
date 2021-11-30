@@ -1,4 +1,5 @@
 from os import P_DETACH, replace
+from matplotlib.colors import LinearSegmentedColormap
 from numpy.lib.npyio import load
 from openpyxl import workbook, load_workbook
 from openpyxl.worksheet import worksheet
@@ -10,7 +11,7 @@ import seaborn as sns
 
 
 filePath = r"F:\workbench\UW_Alerts\UW_alerts.xlsx"
-sheetName =  'SABR'  #'ask1IV50to200' 
+sheetName =  'CLF' #'asksidenotbearishAskUnder4' 'extraunusualIVunder200' #'extraunusual' 'ask4to6IVunder150' 'MRVL'  'ask1IV50to200' 
 #filePath = r"F:\workbench\Sandbox\splittest.xlsx"
 
 print('')
@@ -51,12 +52,11 @@ def cleanStrike(row):
 alertsDF = rawDF.drop(columns=['Actions','Emojis'], axis=1) 
 
 # clean up Time column i.e. alert time, leaving only the date
-alertsDF['Time'] = alertsDF['Time'].str[:-7]
-alertsDF['Time'] = pd.to_datetime(alertsDF['Time'])
+alertsDF['Alert Date'] = alertsDF['@'].str[:-7]
+alertsDF['Alert Date'] = pd.to_datetime(alertsDF['Alert Date'])
 
-# remove trailing spaces 
+# remove trailing spaces & recast 
 alertsDF['Option'].str.strip()
-
 alertsDF['Option'] = alertsDF['Option'].astype('str')
 alertsDF['Option'] = alertsDF['Option'].str.strip()
 
@@ -74,7 +74,8 @@ alertsDF['Strike'] = alertsDF['Strike'].astype('float')
 # Clean up Max Gain columns
 # split into individual $ and % columns
 # recast columns to ensure they are floats 
-alertsDF[['Max Gain', 'Max Gain %']] = alertsDF['Max Gain'].str.split(' ', expand=True)
+# drop the old columns 
+alertsDF[['Max Gain', 'Max Gain %']] = alertsDF['Contract High'].str.split(' ', expand=True)
 alertsDF['Max Gain'] = alertsDF['Max Gain'].str.replace('$', '', regex=True)
 alertsDF['Max Gain %'] = alertsDF['Max Gain %'].str.replace(')', '', regex=True)
 alertsDF['Max Gain %'] = alertsDF['Max Gain %'].str.replace('(', '', regex=True)
@@ -84,8 +85,8 @@ alertsDF['Max Gain %'] = alertsDF['Max Gain %'].astype('float')
 
 # Clean up Max Loss columns
 # split into individual $ and % columns
-# recast columns to ensure they are floats 
-alertsDF[['Max Loss', 'Max Loss %']] = alertsDF['Max Loss'].str.split(' ', expand=True)
+# recast columns to ensure they are floats
+alertsDF[['Max Loss', 'Max Loss %']] = alertsDF['Contract Low'].str.split(' ', expand=True)
 alertsDF['Max Loss'] = alertsDF['Max Loss'].str.replace('$', '', regex=True)
 alertsDF['Max Loss %'] = alertsDF['Max Loss %'].str.replace(')', '', regex=True)
 alertsDF['Max Loss %'] = alertsDF['Max Loss %'].str.replace('(', '', regex=True)
@@ -93,7 +94,11 @@ alertsDF['Max Loss %'] = alertsDF['Max Loss %'].str.replace('%', '', regex=True)
 alertsDF['Max Loss'] = alertsDF['Max Loss'].astype('float')
 alertsDF['Max Loss %'] = alertsDF['Max Loss %'].astype('float')
 
+# making sure no NaN's 
 alertsDF.fillna(0, inplace=True)
+
+# drop the old columns
+alertsDF = alertsDF.drop(columns=['Contract High','Contract Low', '@'], axis=1) 
 
 ###                                   ###
 ##### END OF DATA CLEAN UP SECTION  #####
@@ -102,59 +107,47 @@ alertsDF.fillna(0, inplace=True)
 #####
 # Adding compuited columns:
 # 'DTE' Date to Expiry of the option when the alert was first fired 
-alertsDF['DTE'] = (alertsDF['Expiry'] - alertsDF['Time']).dt.days
-
-
+alertsDF['DTE'] = (alertsDF['Expiry'] - alertsDF['Alert Date']).dt.days
 
 #####
 # Create slices of alertsDF data based on the % return
-# for further analysis 
+# for easier analysis 
 #####
-# <= 0
 below0 = alertsDF.loc[alertsDF['Max Gain %'] <= 0]
-
-# 0 - 50
 below50 = alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 0)]
-
-# 50 - 100
 below100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]
-
-# 100 - 200
 over100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]
-
-# 200 - 1000
 over200 = alertsDF.loc[(alertsDF['Max Gain %'] <= 1000) & (alertsDF['Max Gain %'] > 200)]
-
-# > 1000
 over1000 = alertsDF.loc[(alertsDF['Max Gain %'] > 1000)]
 
 #####
 # Cleaninig up the slices to remove unnneeded columns i.e. strings 
 # to prepare for KMeans analysis 
 #####
-
 # all alerts preserved
-X_allAlerts = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Sector', 'Underlying', '% Diff', 'OG ask', 'Time', 'Tier', 'Max Gain' ], axis=1 )
+X_allAlerts = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Sector', 'Underlying', '% Diff', 'OG ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
 
 # alerts based on optionType column i.e. Call or Put
-X_optionType = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Sector', 'Underlying', 'OG ask', 'Time', 'Tier', 'Max Gain' ], axis=1 )
+X_optionType = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Sector', 'Underlying', 'OG ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
 
 # alerts based on sector column
-X_Sector = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Underlying', '% Diff', 'OG ask', 'Time', 'Tier', 'Max Gain' ], axis=1 )
+X_Sector = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Underlying', '% Diff', 'OG ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
 
 # ALL string columns removed 
-X_floatsOnly = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Sector', 'Underlying', '% Diff', 'OG ask', 'Time', 'Tier', 'Max Gain' ], axis=1 )
+X_floatsOnly = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Sector', 'Underlying', '% Diff', 'OG ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
 
 #####
-# Plot returns over time 
+# Plot Max Gain % as the following: 
+# 1. Call/Put highs over time 
+# 2. highs histogram (call/put combined) 
 #####
 def plotReturns(bins): 
-    # max gain on calls & puts on 1 chart 
+    fig, ax = plt.subplots(2)
     
-    #sns.lineplot(x = alertsDF['Time'], y = alertsDF['Max Gain %'], hue=alertsDF['Option Type'], )
-    
-    alertsDF['Max Gain %'].plot.hist(bins = bins, alpha=1)
-
+    #sns.lineplot(x = alertsDF['Alert Date'], y = alertsDF['Max Gain %'], hue=alertsDF['Option Type'], )
+    #ax[0] = sns.lineplot(x = alertsDF['Alert Date'], y = alertsDF['Max Gain %'], hue=alertsDF['Option Type'], )
+    ax[0].plot(alertsDF['Alert Date'], alertsDF['Max Gain %'], label='Option Type')
+    ax[1] = alertsDF['Max Gain %'].plot.hist(bins = bins, alpha=1)
     plt.show()
 
 #####
@@ -195,40 +188,112 @@ def plotCluster(myDF, numClusters):
     print(myDF.head())
     plt.show()
 
+#####
+# Use this function when you want to understand the alerts for one 
+# particular symbol. 
+#####
+def analyzeSymbolAlerts():
+    totalAlerts = alertsDF['Expiry'].count()
+    alertsDF['Alert Date'] = alertsDF['Alert Date'].map( lambda t: t.strftime('%Y-%m-%d') )
 
+    # percent calcs
+    percentAbove1000 = (alertsDF.loc[(alertsDF['Max Gain %'] >= 1000)]['Volume'].count())
+    percentAbove100 = (alertsDF.loc[(alertsDF['Max Gain %'] >= 100) & (alertsDF['Max Gain %'] < 1000)]['Volume'].count()) / totalAlerts * 100
+    percentBelow10 = (alertsDF.loc[(alertsDF['Max Gain %'] <= 10)]['Volume'].count()) / totalAlerts * 100
+
+    # calls vs. puts 
+    callAlerts = alertsDF.loc[ alertsDF['Option Type'] == 'Call' ]
+    PutAlerts = alertsDF.loc[ alertsDF['Option Type'] == 'Put' ]
+    print('')
+    print('###')
+    print ('Printing Symbol-Alert Stats')
+    print('###')
+    print('')
+    print ('Percent Stats on Max Gain ')
+    print( 'Percent above 1000: %7.2f' % (percentAbove1000) )
+    print( 'Percent above 100:  %7.2f' % percentAbove100 )
+    print( 'Ppercent below 10:   %7.2f' % percentBelow10 )
+    print('')
+    print('Calls vs. Puts')
+    print( 'Calls - Average Max Gain:   %7.2f' % callAlerts['Max Gain %'].mean() )
+    print( 'Puts - Average Max Gain:    %7.2f' % PutAlerts['Max Gain %'].mean() )
+
+    callAlerts = callAlerts[::-1] #flip the DF so time goes up left to right on the histogram plot
+    callAlerts.plot(y = 'Max Gain %', x = 'Alert Date', kind = 'bar')
+    plt.show()
+
+#####
+# Prints key stats on the any alerts dump
+#####
+def printAlertStats():
+    totalAlerts = alertsDF['Alert Date'].count()
+    totalPostiveAlerts = alertsDF.loc[alertsDF['Max Gain %'] > 0]['Alert Date'].count()
+    totalNegativeAlerts = alertsDF.loc[alertsDF['Max Gain %'] <= 0]['Alert Date'].count()
+    ITMalerts = alertsDF.loc[((alertsDF['Strike'] > alertsDF['Underlying']) & (alertsDF['Option Type'] == 'Put')) | ( (alertsDF['Strike'] < alertsDF['Underlying']) & (alertsDF['Option Type'] == 'Call') )]
+
+    print('###########')
+    print('Alert Stats for sheet:', sheetName)
+    print('')
+    # date range covered 
+    print('Period start:', alertsDF['Alert Date'].min())
+    print('Period End:', alertsDF['Alert Date'].max())
+    print('')
+    print('Total Alerts:', alertsDF['Alert Date'].count())
+    print('Percent Positive:', totalPostiveAlerts / totalAlerts * 100)
+    print('Percent Negative:', totalNegativeAlerts / totalAlerts * 100)
+    print('')
+
+    # total <50% , 100%, 200%, 1k+ 
+    print('Bucketed Returns')
+    print( '      < 0:', alertsDF.loc[(alertsDF['Max Gain %'] <= 0)]['Alert Date'].count() / totalAlerts * 100 )
+    print( '   0 - 20:', alertsDF.loc[(alertsDF['Max Gain %'] <= 20) & (alertsDF['Max Gain %'] > 0)]['Alert Date'].count() / totalAlerts * 100 )
+    print( '  21 - 50:', alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 20)]['Alert Date'].count() / totalAlerts * 100 )
+    print( ' 51 - 100:', alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]['Alert Date'].count() / totalAlerts * 100 )
+    print( '101 - 200:', alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]['Alert Date'].count() / totalAlerts * 100  )
+    print( '201 - 500:', alertsDF.loc[(alertsDF['Max Gain %'] <= 500) & (alertsDF['Max Gain %'] > 200)]['Alert Date'].count() / totalAlerts * 100  )
+    print( '     501+:', alertsDF.loc[(alertsDF['Max Gain %'] > 500)]['Alert Date'].count() / totalAlerts * 100  )
+
+    print('')
+    print('         Min Gain:', alertsDF['Max Gain %'].min())
+    print('         Max Gain:', alertsDF['Max Gain %'].max())
+    print(' Average max gain: ', alertsDF['Max Gain %'].mean())
+    print(' Average max loss: ', alertsDF['Max Loss %'].mean())
+    print('')
+    print('Average Max Gain % - Calls:', (alertsDF.loc[alertsDF['Option Type'] == 'Call']['Max Gain %'].mean()))
+    print('Average Max Gain % - Puts:', (alertsDF.loc[alertsDF['Option Type'] == 'Put']['Max Gain %'].mean()))
+    print('')
+    
+    print('Alerts with Max Gain > 1000%')
+    print(over1000.sort_values(['Alert Date']))
+    print('')
+    print('Alerts with Max Gain > 200%')
+    print(over200.sort_values(['Alert Date']))
+    print('')
+    print('Alerts with Max Gain < 0%')
+    print(below0.sort_values(['Alert Date']))
+    print('')
+    print('Alerts over 50%')
+    print(alertsDF.loc[alertsDF['Max Gain %'] > 50])
+    print('')
+    print('last 10 alerts')
+    print(alertsDF.head(10))
+    print('')
+    print('Alerts with DTE < 5')
+    print(alertsDF.loc[alertsDF['DTE'] < 5])
+    print('')
+    print( ITMalerts.sort_values(by=['Alert Date'], ascending=True) )
+    print('')
+    
+    
 #####
 # PRINTING stats
 #####
-print('Min Gain:', alertsDF['Max Gain %'].min())
-print('Max Gain:', alertsDF['Max Gain %'].max())
-print('Median:', alertsDF['Max Gain %'].median())
 
-#print(alertsDF.cov())
-#print(alertsDF.describe())
+# Easier to read table with select columns 
+alertsDF_reduced = alertsDF[['Alert Date', 'Option Type', 'Strike', 'Underlying', 'DTE', 'Expiry', 'Tier', 'OI', 'Volume', 'Max Loss %', 'Max Gain %']]
 
-print('Average max gain: ', alertsDF['Max Gain %'].mean())
-print('Average max loss: ', alertsDF['Max Loss %'].mean())
-
-#####
-# Plotting 
-#####
-# Plots scatter of each column 
-#sns.pairplot(X_optionType, hue='Option Type', aspect=1.5)
-
-#alertsDF.plot.scatter(y = 'Max Loss %', x = 'IV')
-#alertsDF.plot.scatter(y = 'Max Loss %', x = 'Underlying')
-alertsDF.plot.line(x = 'Time', y = 'Max Gain %')
-
-#alertsDF.plot.hist('Max Gain %', bins = 20)
-#alertsDF['Max Gain %'].plot.hist(bins=80)
-#alertsDF['Max Loss %'].plot.hist(bins=80)
-alertsDF_reduced = alertsDF[['Time', 'Option Type', 'Strike', 'Underlying', 'DTE', 'Expiry', 'Tier', 'OI', 'Volume', 'Max Loss %', 'Max Gain %']]
-ITMalerts = alertsDF_reduced.loc[((alertsDF_reduced['Strike'] > alertsDF_reduced['Underlying']) & (alertsDF_reduced['Option Type'] == 'Put')) | ( (alertsDF_reduced['Strike'] < alertsDF_reduced['Underlying']) & (alertsDF_reduced['Option Type'] == 'Call') )]
-
-print ( alertsDF_reduced.sort_values(by=['Time'], ascending=True) )
-print('')
-print('ITM Alerts')
-print ( ITMalerts.sort_values(by=['Time'], ascending=True) )
+analyzeSymbolAlerts()
+printAlertStats()
 
 #####
 # Plotting clusters
@@ -236,8 +301,15 @@ print ( ITMalerts.sort_values(by=['Time'], ascending=True) )
 #elbowMethod(X_floatsOnly)
 #plotCluster(X_floatsOnly, 2)
 
+#####
+# Plotting 
+#####
+# Plots scatter of each column 
+#sns.pairplot(X_optionType, hue='Option Type', aspect=1.5)
+#plotReturns(30)
+
 #plt.show()
-#plotReturns(10)
+
 
 
 
