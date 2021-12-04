@@ -14,7 +14,7 @@ import seaborn as sns
 import time
 
 # Location of the file that contains the alerts dump
-filePath = r"F:\workbench\UW_Alerts\UW_alerts.xlsx"
+filePath = r"F:\workbench\UW_Alerts\UW_alerts_symbols.xlsx"
 
 print('')
 print('#########################################################')
@@ -264,21 +264,21 @@ def generalAlertStats(alertsDF, sliceName = 'Default'):
         
         'Percent Negative': [totalNegativeAlerts / totalAlerts * 100],
         
-        'Gain % - Calls': [alertsDF.loc[alertsDF['Option Type'] == 'Call']['Max Gain %'].mean()],
+        'Gain % (Calls)': [alertsDF.loc[alertsDF['Option Type'] == 'Call']['Max Gain %'].mean()],
         
-        'Gain % - Puts': [alertsDF.loc[alertsDF['Option Type'] == 'Put']['Max Gain %'].mean()],
+        'Gain % (Puts)': [alertsDF.loc[alertsDF['Option Type'] == 'Put']['Max Gain %'].mean()],
         
-        '< 0' : [alertsDF.loc[(alertsDF['Max Gain %'] <= 0)]['Alert Date'].count() / totalAlerts * 100],
+        '<0' : [alertsDF.loc[(alertsDF['Max Gain %'] <= 0)]['Alert Date'].count() / totalAlerts * 100],
         
-        '0 - 20': [alertsDF.loc[(alertsDF['Max Gain %'] <= 20) & (alertsDF['Max Gain %'] > 0)]['Alert Date'].count() / totalAlerts * 100],
+        '0-20': [alertsDF.loc[(alertsDF['Max Gain %'] <= 20) & (alertsDF['Max Gain %'] > 0)]['Alert Date'].count() / totalAlerts * 100],
         
-        '21 - 50': [alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 20)]['Alert Date'].count() / totalAlerts * 100],
+        '21-50': [alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 20)]['Alert Date'].count() / totalAlerts * 100],
         
-        '51 - 100': [alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]['Alert Date'].count() / totalAlerts * 100],
+        '51-100': [alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]['Alert Date'].count() / totalAlerts * 100],
         
-        '101 - 200': [alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]['Alert Date'].count() / totalAlerts * 100],
+        '101-200': [alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]['Alert Date'].count() / totalAlerts * 100],
         
-        '201 - 500': [alertsDF.loc[(alertsDF['Max Gain %'] <= 500) & (alertsDF['Max Gain %'] > 200)]['Alert Date'].count() / totalAlerts * 100],
+        '201-500': [alertsDF.loc[(alertsDF['Max Gain %'] <= 500) & (alertsDF['Max Gain %'] > 200)]['Alert Date'].count() / totalAlerts * 100],
         
         '500+': [alertsDF.loc[(alertsDF['Max Gain %'] > 500)]['Alert Date'].count() / totalAlerts * 100]
 
@@ -299,15 +299,41 @@ def compareAlertSlices(symbolList):
             cleanAlertsData(
                 alertsDF_map[symbol])), ignore_index=True
         )
-    return alertsDF_combined.head(30)
+    return alertsDF_combined
 
+#####
+# Funtion to run computations on the entire body of available 
+# symbols 
+#####
+def globalSymbolAnalysis():
+    print('')
+    print('#########################################################')
+    print('Analyzing all available symbols')
+    start = time.perf_counter()
+    
+    symbolList = alertsDF_map.keys()
+    globalAlertStats = compareAlertSlices(symbolList)
+    globalAlertStats.sort_values(by='Percent Above 100', inplace=True, ascending=False)
+    
+    end = time.perf_counter()
+    print('Success!!')
+    print('')
+    print(f"Elapsed Time: {end - start:0.4f} seconds")
+    print('# Unique Symbols Scanned:', globalAlertStats['Symbol'].nunique())
+    print('')
+    print('#########################################################')
+    print('')
+    
+    return globalAlertStats
 
 symbolList = [ 'AAPL', 'AMZN', 'BA', 'CCL', 'GM', 'MRNA', 
                 'NET', 'NVDA', 'TWTR', 'CLF', 'FB', 'F']
 
-myAlerts = compareAlertSlices(symbolList)
+#myAlerts = compareAlertSlices(symbolList)
+#print(myAlerts.head(20))
 
-print(myAlerts.head(20))
+globalSymbols = globalSymbolAnalysis()
+print(globalSymbols.loc[globalSymbols['Total Alerts'] > 20].head(20))
 
 #####
 # Plotting clusters
