@@ -14,7 +14,9 @@ import seaborn as sns
 import time
 
 # Location of the file that contains the alerts dump
-filePath = r"F:\workbench\UW_Alerts\UW_alerts_symbols.xlsx"
+filePath_symbolAlerts = r"F:\workbench\UW_Alerts\UW_alerts_symbols.xlsx"
+filePath_aggregatedAlerts = r"F:\workbench\UW_Alerts\UW_alerts.xlsx"
+filePath = filePath_symbolAlerts
 
 print('')
 print('#########################################################')
@@ -212,43 +214,26 @@ def plotCluster(myDF, numClusters):
     plt.show()
 
 #####
-# Creates a dataframe with different views of the alerts dataset
-# new DF = [ Symbol, Slice, stats pulled from generalAlertStat():::]
-#####
-def createViews_alerts(alertsDF):
-    alertSlices = generalAlertStats(alertsDF, 'Baseline')
-    
-    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Daily $ Vol'] < 100000) & (alertsDF['OI'] < alertsDF['Volume']))]
-    alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'$vol<1K; OI<Vol' ))
-    
-    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['DTE'] > 20))]
-    if not alertsDF_reduced.empty:
-        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'DTE>20' ))
-    
-    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['DTE'] < 20))]
-    if not alertsDF_reduced.empty:
-         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'DTE<20' ))
-
-    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Tier'] == 'premium') & (alertsDF['DTE'] > 20))]
-    alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'Premium; DTE>20' ))
-    
-    return alertSlices
-
-
-
-#####
 # Returns a df with stats for the passed in alerts dataframe
 # Alert dataset contains multiple or a single symbol
 #####
-# TODO add better handling when passed multiple symbols 
-def generalAlertStats(alertsDF, sliceName = 'Default'):
+def generalAlertStats(alertsDF, sliceName = 'default', sheetName = 'default'):
     totalAlerts = alertsDF['Expiry'].count()
     totalPostiveAlerts = alertsDF.loc[alertsDF['Max Gain %'] > 0]['Alert Date'].count()
     totalNegativeAlerts = alertsDF.loc[alertsDF['Max Gain %'] <= 0]['Alert Date'].count()
 
+    # if the # of unique symbols > 1
+    colName = ''
+    if sheetName == 'default':
+        colName = 'Symbol'
+        colVal = alertsDF.iloc[1]['Symbol']
+    else:
+        colName = 'Sheet Name'
+        colVal = sheetName
+
     percentStatsData = {
         #'Symbol': [alertsDF['Symbol']],
-        'Symbol': [ alertsDF.iloc[1]['Symbol'] ],
+        colName: [ colVal ],
         
         'Slice Name': [sliceName],
         
@@ -288,17 +273,55 @@ def generalAlertStats(alertsDF, sliceName = 'Default'):
     return percentStats
 
 #####
+# Creates a dataframe with different views of the alerts dataset
+# new DF = [ Symbol, Slice, stats pulled from generalAlertStat():::]
+#####
+def createViews_alerts(alertsDF, sheetName = 'default'):
+    
+    alertSlices = generalAlertStats(alertsDF, 'Baseline', sheetName=sheetName)
+    
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Daily $ Vol'] < 100000) & (alertsDF['OI'] < alertsDF['Volume']))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'$vol<1K; OI<Vol', sheetName=sheetName ))
+    
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['DTE'] > 20))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'DTE>20', sheetName=sheetName ))
+    
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['DTE'] < 20))]
+    if not alertsDF_reduced.empty:
+         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'DTE<20', sheetName=sheetName ))
+
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Tier'] == 'premium') & (alertsDF['DTE'] > 20))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'Premium; DTE>20', sheetName=sheetName ))
+    
+    return alertSlices
+
+#####
 # Returns a dataframe that allows for comparisons between
 # alert stats of the passed in array of symbols
 #####
-def compareAlertSlices(symbolList):
+def compareAlertSlices(sheetNames):
     alertsDF_combined = pd.DataFrame()
-    for symbol in symbolList:
-        alertsDF_combined = alertsDF_combined.append(
+    
+    for mySheetName in sheetNames:
+        myAlerts = cleanAlertsData(alertsDF_map[mySheetName])
+        
+        if myAlerts['Symbol'].nunique() == 1:
+            alertsDF_combined = alertsDF_combined.append(
             createViews_alerts(
             cleanAlertsData(
-                alertsDF_map[symbol])), ignore_index=True
-        )
+                alertsDF_map[mySheetName])), ignore_index=True
+            )
+        
+        else:
+            alertsDF_combined = alertsDF_combined.append(
+            createViews_alerts(
+            cleanAlertsData(
+                alertsDF_map[mySheetName]), sheetName=mySheetName), ignore_index=True
+            )
+        
     return alertsDF_combined
 
 #####
@@ -311,20 +334,29 @@ def globalSymbolAnalysis():
     print('Analyzing all available symbols')
     start = time.perf_counter()
     
-    symbolList = alertsDF_map.keys()
-    globalAlertStats = compareAlertSlices(symbolList)
+    #symbolList = alertsDF_map.keys()
+    globalAlertStats = compareAlertSlices(alertsDF_map.keys())
     globalAlertStats.sort_values(by='Percent Above 100', inplace=True, ascending=False)
     
     end = time.perf_counter()
     print('Success!!')
     print('')
     print(f"Elapsed Time: {end - start:0.4f} seconds")
-    print('# Unique Symbols Scanned:', globalAlertStats['Symbol'].nunique())
+    #print('# Unique Symbols Scanned:', globalAlertStats['Symbol'].nunique())
     print('')
     print('#########################################################')
     print('')
     
     return globalAlertStats
+
+#####
+# Similar to globalSymbolAnalysis except for general alert dumps that
+# contain different Sybols
+#####
+def generalAlertsAnalysis():
+    print('')
+    print('#########################################################')
+    print('Analyzing multi-symbol alerts')
 
 symbolList = [ 'AAPL', 'AMZN', 'BA', 'CCL', 'GM', 'MRNA', 
                 'NET', 'NVDA', 'TWTR', 'CLF', 'FB', 'F']
