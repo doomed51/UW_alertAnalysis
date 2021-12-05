@@ -16,7 +16,7 @@ import time
 # Location of the file that contains the alerts dump
 filePath_symbolAlerts = r"F:\workbench\UW_Alerts\UW_alerts_symbols.xlsx"
 filePath_aggregatedAlerts = r"F:\workbench\UW_Alerts\UW_alerts.xlsx"
-filePath = filePath_symbolAlerts
+filePath = filePath_aggregatedAlerts
 
 print('')
 print('#########################################################')
@@ -125,6 +125,8 @@ def cleanAlertsData(alertsDF):
 # Create slices of alertsDF data based on the % return
 # for easier analysis 
 #####
+# TODO deprecate this function....
+# 
 # TODO make this function actually return a dataframe
 # TODO add .copy() to df selection
 # TODO append the slices into 1 data frame 
@@ -137,9 +139,7 @@ def createSlices_maxGain(alertsDF):
     
     below50 = alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 0)].copy()
     below50['Slice'] = 'below50'
-    
     maxGainSlices.append(below0, below50)
-    
     below100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]
     over100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]
     over200 = alertsDF.loc[(alertsDF['Max Gain %'] <= 1000) & (alertsDF['Max Gain %'] > 200)]
@@ -217,16 +217,16 @@ def plotCluster(myDF, numClusters):
 # Returns a df with stats for the passed in alerts dataframe
 # Alert dataset contains multiple or a single symbol
 #####
-def generalAlertStats(alertsDF, sliceName = 'default', sheetName = 'default'):
-    totalAlerts = alertsDF['Expiry'].count()
-    totalPostiveAlerts = alertsDF.loc[alertsDF['Max Gain %'] > 0]['Alert Date'].count()
-    totalNegativeAlerts = alertsDF.loc[alertsDF['Max Gain %'] <= 0]['Alert Date'].count()
+def generalAlertStats(alertsDF1, sliceName = 'default', sheetName = 'default'):
+    totalAlerts = alertsDF1['Expiry'].count()
+    totalPostiveAlerts = alertsDF1.loc[alertsDF1['Max Gain %'] > 0]['Alert Date'].count()
+    totalNegativeAlerts = alertsDF1.loc[alertsDF1['Max Gain %'] <= 0]['Alert Date'].count()
 
     # if the # of unique symbols > 1
     colName = ''
-    if sheetName == 'default':
+    if alertsDF1['Symbol'].nunique() == 1:
         colName = 'Symbol'
-        colVal = alertsDF.iloc[1]['Symbol']
+        colVal = alertsDF1.iloc[0]['Symbol']
     else:
         colName = 'Sheet Name'
         colVal = sheetName
@@ -237,35 +237,35 @@ def generalAlertStats(alertsDF, sliceName = 'default', sheetName = 'default'):
         
         'Slice Name': [sliceName],
         
-        'Period Start': [alertsDF['Alert Date'].min().strftime('%Y-%m-%d')], 
+        'Period Start': [alertsDF1['Alert Date'].min().strftime('%Y-%m-%d')], 
         
-        'Period End': [alertsDF['Alert Date'].max().strftime('%Y-%m-%d')],
+        'Period End': [alertsDF1['Alert Date'].max().strftime('%Y-%m-%d')],
         
-        'Total Alerts': [alertsDF['Alert Date'].count()], 
+        'Total Alerts': [alertsDF1['Alert Date'].count()], 
         
         'Percent Positive': [totalPostiveAlerts / totalAlerts * 100],
 
-        'Percent Above 100': [alertsDF.loc[(alertsDF['Max Gain %'] >= 20)]['Alert Date'].count() / totalAlerts * 100],
+        'Percent Above 100': [alertsDF1.loc[(alertsDF1['Max Gain %'] >= 20)]['Alert Date'].count() / totalAlerts * 100],
         
         'Percent Negative': [totalNegativeAlerts / totalAlerts * 100],
         
-        'Gain % (Calls)': [alertsDF.loc[alertsDF['Option Type'] == 'Call']['Max Gain %'].mean()],
+        'Gain % (Calls)': [alertsDF1.loc[alertsDF1['Option Type'] == 'Call']['Max Gain %'].mean()],
         
-        'Gain % (Puts)': [alertsDF.loc[alertsDF['Option Type'] == 'Put']['Max Gain %'].mean()],
+        'Gain % (Puts)': [alertsDF1.loc[alertsDF1['Option Type'] == 'Put']['Max Gain %'].mean()],
         
-        '<0' : [alertsDF.loc[(alertsDF['Max Gain %'] <= 0)]['Alert Date'].count() / totalAlerts * 100],
+        '<0' : [alertsDF1.loc[(alertsDF1['Max Gain %'] <= 0)]['Alert Date'].count() / totalAlerts * 100],
         
-        '0-20': [alertsDF.loc[(alertsDF['Max Gain %'] <= 20) & (alertsDF['Max Gain %'] > 0)]['Alert Date'].count() / totalAlerts * 100],
+        '0-20': [alertsDF1.loc[(alertsDF1['Max Gain %'] <= 20) & (alertsDF1['Max Gain %'] > 0)]['Alert Date'].count() / totalAlerts * 100],
         
-        '21-50': [alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 20)]['Alert Date'].count() / totalAlerts * 100],
+        '21-50': [alertsDF1.loc[(alertsDF1['Max Gain %'] <= 50) & (alertsDF1['Max Gain %'] > 20)]['Alert Date'].count() / totalAlerts * 100],
         
-        '51-100': [alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]['Alert Date'].count() / totalAlerts * 100],
+        '51-100': [alertsDF1.loc[(alertsDF1['Max Gain %'] <= 100) & (alertsDF1['Max Gain %'] > 50)]['Alert Date'].count() / totalAlerts * 100],
         
-        '101-200': [alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]['Alert Date'].count() / totalAlerts * 100],
+        '101-200': [alertsDF1.loc[(alertsDF1['Max Gain %'] <= 200) & (alertsDF1['Max Gain %'] > 100)]['Alert Date'].count() / totalAlerts * 100],
         
-        '201-500': [alertsDF.loc[(alertsDF['Max Gain %'] <= 500) & (alertsDF['Max Gain %'] > 200)]['Alert Date'].count() / totalAlerts * 100],
+        '201-500': [alertsDF1.loc[(alertsDF1['Max Gain %'] <= 500) & (alertsDF1['Max Gain %'] > 200)]['Alert Date'].count() / totalAlerts * 100],
         
-        '500+': [alertsDF.loc[(alertsDF['Max Gain %'] > 500)]['Alert Date'].count() / totalAlerts * 100]
+        '500+': [alertsDF1.loc[(alertsDF1['Max Gain %'] > 500)]['Alert Date'].count() / totalAlerts * 100]
 
     }
     percentStats = pd.DataFrame(percentStatsData)
@@ -273,8 +273,10 @@ def generalAlertStats(alertsDF, sliceName = 'default', sheetName = 'default'):
     return percentStats
 
 #####
-# Creates a dataframe with different views of the alerts dataset
+# Creates a dataframe with different filters on the alerts dataset
 # new DF = [ Symbol, Slice, stats pulled from generalAlertStat():::]
+# if sheetName = default i.e. no sheetName is passed in that indicates
+# that only alerts for a single Symbol are being analyzed
 #####
 def createViews_alerts(alertsDF, sheetName = 'default'):
     
@@ -296,6 +298,18 @@ def createViews_alerts(alertsDF, sheetName = 'default'):
     if not alertsDF_reduced.empty:
         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'Premium; DTE>20', sheetName=sheetName ))
     
+    # ask < 4;  volume < median;    % diff > 20
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['OG ask'] < 4) & (alertsDF['Volume'] > alertsDF['Volume'].median()) & (alertsDF['% Diff'] > 0.2) )]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'ask<4;vol>med;diff>20', sheetName=sheetName ))
+        #if sheetName == 'AS-1':
+            #print(alertsDF_reduced.head(20))
+
+    # Calls that are tagged as Bullish + Ask side 
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Call') & (alertsDF['Emojis'].str.contains("Bullish") & (alertsDF['Emojis'].str.contains("Ask Side")) ))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'CallsBullishAskSide', sheetName=sheetName ))
+
     return alertSlices
 
 #####
@@ -350,13 +364,17 @@ def globalSymbolAnalysis():
     return globalAlertStats
 
 #####
-# Similar to globalSymbolAnalysis except for general alert dumps that
-# contain different Sybols
+# Prints the alerts for the selected sheet and slice
 #####
-def generalAlertsAnalysis():
-    print('')
-    print('#########################################################')
-    print('Analyzing multi-symbol alerts')
+def printSlice(sheetName, sliceName):
+    selectedSlice = cleanAlertsData(alertsDF_map[sheetName])
+
+    if sliceName == 'ask<4;vol>med;diff>20':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['OG ask'] < 4) & (selectedSlice['Volume'] > selectedSlice['Volume'].median()) & (selectedSlice['% Diff'] > 0.2) )]
+
+    
+    #print(selectSlice.loc[selectSlice['Slice Name'] == sliceName])
+    print(selectedSlice.head(20))
 
 symbolList = [ 'AAPL', 'AMZN', 'BA', 'CCL', 'GM', 'MRNA', 
                 'NET', 'NVDA', 'TWTR', 'CLF', 'FB', 'F']
@@ -364,8 +382,15 @@ symbolList = [ 'AAPL', 'AMZN', 'BA', 'CCL', 'GM', 'MRNA',
 #myAlerts = compareAlertSlices(symbolList)
 #print(myAlerts.head(20))
 
-globalSymbols = globalSymbolAnalysis()
-print(globalSymbols.loc[globalSymbols['Total Alerts'] > 20].head(20))
+#globalSymbols = globalSymbolAnalysis()
+#globalSymbols.sort_values(by='201-500', inplace=True, ascending=False)
+#print(globalSymbols.loc[globalSymbols['Total Alerts'] > 20].head(20))
+
+printSlice('AS-1', 'ask<4;vol>med;diff>20')
+
+#print(globalSymbols.loc[globalSymbols['Slice Name'] == 'CallsBullishAskSide'] )
+
+#printTheseResults( sheetname, slice name)
 
 #####
 # Plotting clusters
