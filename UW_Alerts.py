@@ -1,3 +1,4 @@
+from datetime import datetime
 from os import P_DETACH, replace
 from matplotlib.colors import LinearSegmentedColormap
 from numpy.core.defchararray import index
@@ -13,29 +14,43 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import time
 
-# Location of the file that contains the alerts dump
-filePath_symbolAlerts = r"F:\workbench\UW_Alerts\UW_alerts_symbols.xlsx"
-filePath_aggregatedAlerts = r"F:\workbench\UW_Alerts\UW_alerts.xlsx"
-filePath = filePath_aggregatedAlerts
+# Input: symbol name or sheet name 
+# Out: Dataframe of cleansed alerts  
+# Why: less effort to go between symbol alert and general alert spreadsheet
+def getAlerts(symbolOrSheetName):
+    # Location of the file that contains the alerts dump
+    filePaths = [r"F:\workbench\UW_Alerts\UW_alerts_symbols.xlsx", 
+        r"F:\workbench\UW_Alerts\UW_alerts.xlsx"]
+    print('')
+    print('#########################################################')
+    print('Loading files ...')
+    start = time.perf_counter()
+    
+    workbook_symbol = load_workbook(filename=filePaths[0])
+    workbook = load_workbook(filename=filePaths[1])
+    print('Success!')
+    print('')
+    if symbolOrSheetName in workbook_symbol.sheetnames:
+        print('Sheet found, loading alerts ...')
+        alertsDF_map = pd.read_excel(filePaths[0], sheet_name=None)
+    elif symbolOrSheetName in workbook.sheetnames:
+        print('Sheet found, loading alerts ...')
+        alertsDF_map = pd.read_excel(filePaths[1], sheet_name=None)
+    else:
+        print("Sheet not found!!")
+        exit()
+    
+    end = time.perf_counter()
+    print('Success!')
+    print('')
+    print(f"Elapsed Time: {end - start:0.4f} seconds")
+    print('#########################################################')
+    print('')
 
-print('')
-print('#########################################################')
-print('Loading file:', filePath)
+    return cleanAlertsData(alertsDF_map[symbolOrSheetName])
+    
 
-#load workbook
-start = time.perf_counter()
-workbook = load_workbook(filename=filePath)
-alertsDF_map = pd.read_excel(filePath, sheet_name=None)
-end = time.perf_counter()
-
-print('')
-print('Success!')
-print(f"Elapsed Time: {end - start:0.4f} seconds")
-print()
-print('#########################################################')
-print('')
-
-
+    
 
 #####
 # Util function
@@ -150,10 +165,21 @@ def createSlices_maxGain(alertsDF):
 # 1. Call/Put highs over time 
 # 2. highs histogram (call/put combined) 
 #####
-def plotReturns(bins, alertsDF): 
-    fig, ax = plt.subplots(2)
-    ax[0].plot(alertsDF['Alert Date'], alertsDF['Max Gain %'], label='Option Type')
-    ax[1] = alertsDF['Max Gain %'].plot.hist(bins = bins, alpha=1)
+def plotReturns(alertsDF, title="Calls vs. Puts"): 
+    #fig, ax = plt.subplots(2)
+    #ax[0].plot(alertsDF['Alert Date'], alertsDF['Max Gain %'], #label='Option Type')
+    #ax[1] = alertsDF['Max Gain %'].plot.hist(bins = bins, alpha=1)
+    
+    #alertsDF.plot(kind='line', x='Alert Date', y='Max Gain %', color=alertsDF['Option Type'] )
+    alertsDF.sort_values(by='Alert Date', inplace=True, ascending=False)
+    calls = alertsDF.loc[alertsDF['Option Type'] == 'Call']
+    puts = alertsDF.loc[alertsDF['Option Type'] == 'Put']
+
+    plt.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
+
+    plt.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
+    plt.title(label=title)
+    plt.legend()
     plt.show()
 
 #####
@@ -245,7 +271,7 @@ def generalAlertStats(alertsDF1, sliceName = 'default', sheetName = 'default'):
         
         'Percent Positive': [totalPostiveAlerts / totalAlerts * 100],
 
-        'Percent Above 100': [alertsDF1.loc[(alertsDF1['Max Gain %'] >= 20)]['Alert Date'].count() / totalAlerts * 100],
+        'Percent Above 100': [alertsDF1.loc[(alertsDF1['Max Gain %'] >= 100)]['Alert Date'].count() / totalAlerts * 100],
         
         'Percent Negative': [totalNegativeAlerts / totalAlerts * 100],
         
@@ -273,18 +299,23 @@ def generalAlertStats(alertsDF1, sliceName = 'default', sheetName = 'default'):
     return percentStats
 
 #####
-# Creates a dataframe with different filters on the alerts dataset
+# Generates a dataframe that contains performance statistics 
+# of different slices of the passed in alerts dataframe
+##
 # new DF = [ Symbol, Slice, stats pulled from generalAlertStat():::]
-# if sheetName = default i.e. no sheetName is passed in that indicates
-# that only alerts for a single Symbol are being analyzed
+# if sheetName = default i.e. no sheetName is passed, the code assumes
+# that the passed in alerts are for a single symbol
 #####
-def createViews_alerts(alertsDF, sheetName = 'default'):
+def generateSliceStats(alertsDF, sheetName = 'default'):
     
-    alertSlices = generalAlertStats(alertsDF, 'Baseline', sheetName=sheetName)
+    alertSlices = generalAlertStats(alertsDF, 'baseline', sheetName=sheetName)
     
     alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Daily $ Vol'] < 100000) & (alertsDF['OI'] < alertsDF['Volume']))]
+    print('####################')
+    print(alertsDF_reduced)
+    print('####################')
     if not alertsDF_reduced.empty:
-        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'$vol<1K; OI<Vol', sheetName=sheetName ))
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'$vol<100K;OI<Vol', sheetName=sheetName ))
     
     alertsDF_reduced = alertsDF.loc[ ( (alertsDF['DTE'] > 20))]
     if not alertsDF_reduced.empty:
@@ -302,15 +333,141 @@ def createViews_alerts(alertsDF, sheetName = 'default'):
     alertsDF_reduced = alertsDF.loc[ ( (alertsDF['OG ask'] < 4) & (alertsDF['Volume'] > alertsDF['Volume'].median()) & (alertsDF['% Diff'] > 0.2) )]
     if not alertsDF_reduced.empty:
         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'ask<4;vol>med;diff>20', sheetName=sheetName ))
-        #if sheetName == 'AS-1':
-            #print(alertsDF_reduced.head(20))
+    
+    # Calls that are tagged as Bullish 
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Call') & (alertsDF['Emojis'].str.contains("Bullish") ))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'CallsBullish', sheetName=sheetName ))
 
     # Calls that are tagged as Bullish + Ask side 
     alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Call') & (alertsDF['Emojis'].str.contains("Bullish") & (alertsDF['Emojis'].str.contains("Ask Side")) ))]
     if not alertsDF_reduced.empty:
         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'CallsBullishAskSide', sheetName=sheetName ))
 
+    # Calls that are tagged as Bullish + Bid side 
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Call') & (alertsDF['Emojis'].str.contains("Bullish") & (alertsDF['Emojis'].str.contains("Bid Side")) ))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'CallsBullishBidSide', sheetName=sheetName ))
+
+    # Calls that are tagged as Bearish + Ask side 
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Call') & (alertsDF['Emojis'].str.contains("Bearish") & (alertsDF['Emojis'].str.contains("Ask Side")) ))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'CallsBearishAskSide', sheetName=sheetName ))
+
+    # Calls that are tagged as Bearish + Bid side 
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Call') & (alertsDF['Emojis'].str.contains("Bearish") & (alertsDF['Emojis'].str.contains("Bid Side")) ))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'CallsBearishBidSide', sheetName=sheetName ))
+    
+    # Puts that are tagged as Bullish + Ask side 
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Put') & (alertsDF['Emojis'].str.contains("Bullish") & (alertsDF['Emojis'].str.contains("Ask Side")) ))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'PutsBullishAskSide', sheetName=sheetName ))
+
+    # Puts that are tagged as Bullish + Bid side 
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Put') & (alertsDF['Emojis'].str.contains("Bullish") & (alertsDF['Emojis'].str.contains("Bid Side")) ))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'PutsBullishBidSide', sheetName=sheetName ))
+
+    # Puts that are tagged as Bearish  
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Put') & (alertsDF['Emojis'].str.contains("Bearish") ) )]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'PutsBearish', sheetName=sheetName ))
+
+    # Puts that are tagged as Bearish + Ask side 
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Put') & (alertsDF['Emojis'].str.contains("Bearish") & (alertsDF['Emojis'].str.contains("Ask Side")) ))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'PutsBearishAskSide', sheetName=sheetName ))
+
+    # Puts that are tagged as Bearish + Bid side 
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Option Type'] == 'Put') & (alertsDF['Emojis'].str.contains("Bearish") & (alertsDF['Emojis'].str.contains("Bid Side")) ))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'PutsBearishBidSide', sheetName=sheetName ))
+
+    # Alert age < 5 days
+    alertsDF_reduced = alertsDF.loc[ ((datetime.today() - alertsDF['Alert Date']).dt.days < 5)]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'alert<5', sheetName=sheetName ))
+    
+    # Alert age > 5 days
+    alertsDF_reduced = alertsDF.loc[ ((datetime.today() - alertsDF['Alert Date']).dt.days > 5)]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'alert>5', sheetName=sheetName ))
+    
+    # Alert age > 10 days
+    alertsDF_reduced = alertsDF.loc[ ((datetime.today() - alertsDF['Alert Date']).dt.days > 10)]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'alert>10', sheetName=sheetName ))
+
+    # alertsDF['DTE'] = (alertsDF['Expiry'] - alertsDF['Alert Date']).dt.days
+
     return alertSlices
+#####
+# returns a dataframe that contains the alerts for the passed in
+# sheet name and slice name 
+#####
+def getSliceAlerts(alertsDF, sliceName):
+    
+    selectedSlice = alertsDF
+    
+    if sliceName == '$vol<100K;OI<Vol':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Daily $ Vol'] < 100000) & (selectedSlice['OI'] < selectedSlice['Volume']))]
+    
+    elif sliceName == 'DTE>20':
+        selectedSlice = selectedSlice.loc[ ( selectedSlice['DTE'] > 20)]
+
+    elif sliceName == 'DTE<20':
+        selectedSlice = selectedSlice.loc[ ( selectedSlice['DTE'] < 20)]
+        
+    elif sliceName == 'Premium; DTE>20':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Tier'] == 'premium') & (selectedSlice['DTE'] > 20))]
+    
+    elif sliceName == 'Premium; DTE<20':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Tier'] == 'premium') & (selectedSlice['DTE'] < 20))]
+        
+    elif sliceName == 'ask<4;vol>med;diff>20':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['OG ask'] < 4) & (selectedSlice['Volume'] > selectedSlice['Volume'].median()) & (selectedSlice['% Diff'] > 0.2) )]
+    
+    elif sliceName == 'CallsBullish':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Call') & (selectedSlice['Emojis'].str.contains("Bullish")) )]
+
+    elif sliceName == 'CallsBullishAskSide':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Call') & (selectedSlice['Emojis'].str.contains("Bullish") & (selectedSlice['Emojis'].str.contains("Ask Side")) ))]
+
+    elif sliceName == 'CallsBullisBidSide':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Call') & (selectedSlice['Emojis'].str.contains("Bullish") & (selectedSlice['Emojis'].str.contains("Bid Side")) ))]
+    
+    elif sliceName == 'CallsBearishBidSide':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Call') & (selectedSlice['Emojis'].str.contains("Bearish") & (selectedSlice['Emojis'].str.contains("Bid Side")) ))]
+    
+    elif sliceName == 'CallsBearishAskSide':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Call') & (selectedSlice['Emojis'].str.contains("Bearish") & (selectedSlice['Emojis'].str.contains("Ask Side")) ))]
+        
+    elif sliceName == 'PutsBullishAskSide':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Put') & (selectedSlice['Emojis'].str.contains("Bullish") & (selectedSlice['Emojis'].str.contains("Ask Side")) ))]
+        
+    elif sliceName == 'PutsBullishBidSide':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Put') & (selectedSlice['Emojis'].str.contains("Bullish") & (selectedSlice['Emojis'].str.contains("Bid Side")) ))]
+
+    elif sliceName == 'PutsBearish':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Put') & (selectedSlice['Emojis'].str.contains("Bearish") ))]
+
+    elif sliceName == 'PutsBearishBidSide':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Put') & (selectedSlice['Emojis'].str.contains("Bearish") & (selectedSlice['Emojis'].str.contains("Bid Side")) ))]
+    
+    elif sliceName == 'PutsBearishAskSide':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Put') & (selectedSlice['Emojis'].str.contains("Bearish") & (selectedSlice['Emojis'].str.contains("Ask Side")) ))]
+    
+    elif sliceName == 'alert<5':
+        selectedSlice = selectedSlice.loc[ ((datetime.today() - selectedSlice['Alert Date']).dt.days < 5)]
+
+    elif sliceName == 'alert>5':
+        selectedSlice = selectedSlice.loc[ ((datetime.today() - selectedSlice['Alert Date']).dt.days > 5)]
+
+    elif sliceName == 'alert>10':
+        selectedSlice = selectedSlice.loc[ ((datetime.today() - selectedSlice['Alert Date']).dt.days > 10)]
+
+    return selectedSlice.sort_values(by='Max Gain %', ascending=False)
 
 #####
 # Returns a dataframe that allows for comparisons between
@@ -324,16 +481,14 @@ def compareAlertSlices(sheetNames):
         
         if myAlerts['Symbol'].nunique() == 1:
             alertsDF_combined = alertsDF_combined.append(
-            createViews_alerts(
-            cleanAlertsData(
-                alertsDF_map[mySheetName])), ignore_index=True
+            generateSliceStats(
+            myAlerts), ignore_index=True
             )
         
         else:
             alertsDF_combined = alertsDF_combined.append(
-            createViews_alerts(
-            cleanAlertsData(
-                alertsDF_map[mySheetName]), sheetName=mySheetName), ignore_index=True
+            generateSliceStats(
+            myAlerts, sheetName=mySheetName), ignore_index=True
             )
         
     return alertsDF_combined
@@ -364,29 +519,97 @@ def globalSymbolAnalysis():
     return globalAlertStats
 
 #####
-# Prints the alerts for the selected sheet and slice
+# Look for the most frequently occuring symbols
 #####
-def printSlice(sheetName, sliceName):
-    selectedSlice = cleanAlertsData(alertsDF_map[sheetName])
+def findSymbolsWithHighFrequency(cleanAlertsDF):
+    print('finding frequent Symbols!')
+    # symbol, # alerts in last 3, 5, 8 days
+    groupedAlerts = cleanAlertsDF.groupby(by='Symbol').count()
+    print(groupedAlerts.head(10))
 
-    if sliceName == 'ask<4;vol>med;diff>20':
-        selectedSlice = selectedSlice.loc[ ( (selectedSlice['OG ask'] < 4) & (selectedSlice['Volume'] > selectedSlice['Volume'].median()) & (selectedSlice['% Diff'] > 0.2) )]
-
-    
-    #print(selectSlice.loc[selectSlice['Slice Name'] == sliceName])
-    print(selectedSlice.head(20))
 
 symbolList = [ 'AAPL', 'AMZN', 'BA', 'CCL', 'GM', 'MRNA', 
                 'NET', 'NVDA', 'TWTR', 'CLF', 'FB', 'F']
 
-#myAlerts = compareAlertSlices(symbolList)
-#print(myAlerts.head(20))
+
+def quickAnalysis(alertsDF):
+    symbolAlerts = alertsDF
+
+    sliceStats = generateSliceStats(symbolAlerts)
+    sliceStats.sort_values(by='Percent Above 100', inplace=True, ascending=False)
+    
+    print('')
+    print('Slices for Alert list')
+    print(sliceStats)
+    
+    slices = sliceStats.loc[sliceStats['Total Alerts'] > 10]
+    
+    bestSlice = slices.loc[ (slices['Percent Above 100'] == slices['Percent Above 100'].max()) ]['Slice Name']
+    
+    alertsInBestSlice = getSliceAlerts(symbolAlerts, bestSlice.iloc[0])
+    baseline = getSliceAlerts(symbolAlerts, 'baseline')
+
+    print('')
+    print('Printing Alerts in best slice:', bestSlice.iloc[0])
+    print('')
+    print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']])
+
+    print('')
+    print('Baseline Alerts')
+    print('')
+    print(baseline.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']])
+
+    plotReturns(alertsInBestSlice, title=bestSlice.iloc[0])
+    plotReturns(baseline, 'Baseline')
+
+def quickAnalysis_generalAlerts(sheetName):
+    print('')
+    print('Quick Analysis on:', sheetName)
+    
+    allAlerts = cleanAlertsData(alertsDF_map[sheetName])
+    
+    allAlerts_sliceStats = generateSliceStats(allAlerts, sheetName)
+    
+    selectSlices = allAlerts_sliceStats.loc[allAlerts_sliceStats['Total Alerts'] > 10]
+    bestSlice = selectSlices.loc[ (selectSlices['Percent Above 100'] == selectSlices['Percent Above 100'].max()) ]['Slice Name']
+
+    alertsInBestSlice = getSliceAlerts(allAlerts, bestSlice.iloc[0])
+
+    print('')
+    print('Slice Stats')
+    print(allAlerts_sliceStats.sort_values(by='Percent Above 100', ascending=False))
+    print('')
+    print('Best Slice:', bestSlice.iloc[0])
+    print(selectSlices.loc[ (selectSlices['Percent Above 100'] == selectSlices['Percent Above 100'].max())])
+    print('')
+    print('Alerts in Best Slice')
+    print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']])
+
 
 #globalSymbols = globalSymbolAnalysis()
-#globalSymbols.sort_values(by='201-500', inplace=True, ascending=False)
+#globalSymbols.sort_values(by='Percent Above 100', inplace=True, ascending=False)
 #print(globalSymbols.loc[globalSymbols['Total Alerts'] > 20].head(20))
 
-printSlice('AS-1', 'ask<4;vol>med;diff>20')
+#quickAnalysis_Symbol('F')
+
+#quickAnalysis_generalAlerts('ask<4;IV<150')
+
+myAlerts = getAlerts('ENDP')
+#myAlerts = getAlerts('ask<4;IV<150')
+
+quickAnalysis(myAlerts)
+
+
+#findSymbolsWithHighFrequency(cleanAlertsData(alertsDF_map['ask1to4IVund200']))
+
+#mySliceAlerts = getSliceAlerts('SBUX', 'baseline')
+#print(mySliceAlerts)
+
+#print( generalAlertStats(cleanAlertsData(alertsDF_map['SBUX'])) )
+#plotReturns(mySliceAlerts)
+
+######################
+
 
 #print(globalSymbols.loc[globalSymbols['Slice Name'] == 'CallsBullishAskSide'] )
 
