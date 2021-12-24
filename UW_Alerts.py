@@ -81,7 +81,8 @@ def cleanAlertsData(alertsDF):
     alertsDF = alertsDF.drop(columns=['Actions'], axis=1) 
 
     # clean up Time column i.e. alert time, leaving only the date
-    alertsDF['Alert Date'] = alertsDF['@'].str[:-7]
+    alertsDF['Alert Date'] = alertsDF['@'].astype(str).str[:-8]
+    print(alertsDF['Alert Date'].head())
     alertsDF['Alert Date'] = pd.to_datetime(alertsDF['Alert Date'])
 
     # remove trailing spaces & recast 
@@ -311,11 +312,12 @@ def generateSliceStats(alertsDF, sheetName = 'default'):
     alertSlices = generalAlertStats(alertsDF, 'baseline', sheetName=sheetName)
     
     alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Daily $ Vol'] < 100000) & (alertsDF['OI'] < alertsDF['Volume']))]
-    print('####################')
-    print(alertsDF_reduced)
-    print('####################')
     if not alertsDF_reduced.empty:
         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'$vol<100K;OI<Vol', sheetName=sheetName ))
+
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Daily $ Vol'] < 100000) & (alertsDF['IV'] < 40))]
+    if not alertsDF_reduced.empty:
+        alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'$vol<100K;IV<40', sheetName=sheetName ))
     
     alertsDF_reduced = alertsDF.loc[ ( (alertsDF['DTE'] > 20))]
     if not alertsDF_reduced.empty:
@@ -403,8 +405,7 @@ def generateSliceStats(alertsDF, sheetName = 'default'):
 
     return alertSlices
 #####
-# returns a dataframe that contains the alerts for the passed in
-# sheet name and slice name 
+# Takes in any Alerts dump and returns the alerts that are within the passed in sliceName
 #####
 def getSliceAlerts(alertsDF, sliceName):
     
@@ -427,6 +428,9 @@ def getSliceAlerts(alertsDF, sliceName):
         
     elif sliceName == 'ask<4;vol>med;diff>20':
         selectedSlice = selectedSlice.loc[ ( (selectedSlice['OG ask'] < 4) & (selectedSlice['Volume'] > selectedSlice['Volume'].median()) & (selectedSlice['% Diff'] > 0.2) )]
+    
+    elif sliceName == '$vol<100K;IV<40':
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Daily $ Vol'] < 100000) & (selectedSlice['IV'] < 40))]
     
     elif sliceName == 'CallsBullish':
         selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Call') & (selectedSlice['Emojis'].str.contains("Bullish")) )]
@@ -458,13 +462,13 @@ def getSliceAlerts(alertsDF, sliceName):
     elif sliceName == 'PutsBearishAskSide':
         selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Put') & (selectedSlice['Emojis'].str.contains("Bearish") & (selectedSlice['Emojis'].str.contains("Ask Side")) ))]
     
-    elif sliceName == 'alert<5':
+    elif sliceName == 'alert<5days':
         selectedSlice = selectedSlice.loc[ ((datetime.today() - selectedSlice['Alert Date']).dt.days < 5)]
 
-    elif sliceName == 'alert>5':
+    elif sliceName == 'alert>5days':
         selectedSlice = selectedSlice.loc[ ((datetime.today() - selectedSlice['Alert Date']).dt.days > 5)]
 
-    elif sliceName == 'alert>10':
+    elif sliceName == 'alert>10days':
         selectedSlice = selectedSlice.loc[ ((datetime.today() - selectedSlice['Alert Date']).dt.days > 10)]
 
     return selectedSlice.sort_values(by='Max Gain %', ascending=False)
@@ -594,10 +598,18 @@ def quickAnalysis_generalAlerts(sheetName):
 
 #quickAnalysis_generalAlerts('ask<4;IV<150')
 
-myAlerts = getAlerts('ENDP')
-#myAlerts = getAlerts('ask<4;IV<150')
+myAlerts = getAlerts('cramerbear')
 
 quickAnalysis(myAlerts)
+
+baseline = getSliceAlerts(myAlerts, 'baseline')[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'DTE', '% Diff', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']]
+
+baseline = baseline.loc[baseline['Max Gain %'] > 100]
+
+#alerts_IV40 = myAlerts.loc[(myAlerts['IV'] < 40) & (myAlerts['Daily $ Vol'] < 50000)][['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', '% Diff', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']]
+#quickAnalysis(alerts_IV40)
+
+#print(alerts_IV40)
 
 
 #findSymbolsWithHighFrequency(cleanAlertsData(alertsDF_map['ask1to4IVund200']))
@@ -625,7 +637,7 @@ quickAnalysis(myAlerts)
 # Plotting 
 #####
 # Plots scatter of each column 
-#sns.pairplot(X_optionType, hue='Option Type', aspect=1.5)
+#sns.pairplot(baseline, hue='Option Type', aspect=1.5)
 #sns.pairplot(alertsDF_reduced, hue='Tier', aspect=1.5 )
 #plotReturns(30)
 
