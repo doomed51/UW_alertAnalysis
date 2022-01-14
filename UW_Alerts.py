@@ -20,7 +20,8 @@ import time
 def getAlerts(symbolOrSheetName):
     # Location of the file that contains the alerts dump
     filePaths = [r"F:\workbench\UW_Alerts\UW_alerts_symbols.xlsx", 
-        r"F:\workbench\UW_Alerts\UW_alerts.xlsx"]
+        r"F:\workbench\UW_Alerts\UW_alerts.xlsx",
+        r"F:\workbench\UW_Alerts\UW_alerts_myHunt.xlsx"]
     print('')
     print('#########################################################')
     print('Loading files ...')
@@ -28,6 +29,8 @@ def getAlerts(symbolOrSheetName):
     
     workbook_symbol = load_workbook(filename=filePaths[0])
     workbook = load_workbook(filename=filePaths[1])
+    workbook_myHunt = load_workbook(filename=filePaths[2])
+
     print('Success!')
     print('')
     if symbolOrSheetName in workbook_symbol.sheetnames:
@@ -36,6 +39,9 @@ def getAlerts(symbolOrSheetName):
     elif symbolOrSheetName in workbook.sheetnames:
         print('Sheet found, loading alerts ...')
         alertsDF_map = pd.read_excel(filePaths[1], sheet_name=None)
+    elif symbolOrSheetName in workbook_myHunt.sheetnames:
+        print('Sheet found, loading alerts ...')
+        alertsDF_map = pd.read_excel(filePaths[2], sheet_name=None)
     else:
         print("Sheet not found!!")
         exit()
@@ -84,6 +90,7 @@ def cleanAlertsData(alertsDF):
     alertsDF['Alert Date'] = alertsDF['@'].astype(str).str[:-8]
     print(alertsDF['Alert Date'].head())
     alertsDF['Alert Date'] = pd.to_datetime(alertsDF['Alert Date'])
+    alertsDF['Expiry'] = pd.to_datetime(alertsDF['Expiry'])
 
     # remove trailing spaces & recast 
     alertsDF['Option'].str.strip()
@@ -105,22 +112,26 @@ def cleanAlertsData(alertsDF):
     # split into individual $ and % columns
     # recast columns to ensure they are floats 
     # drop the old columns 
-    alertsDF[['Max Gain', 'Max Gain %']] = alertsDF['Contract High'].str.split(' ', expand=True)
+    alertsDF[['Max Gain %', 'Max Gain']] = alertsDF['Contract High'].str.split(' ', expand=True)
     alertsDF['Max Gain'] = alertsDF['Max Gain'].str.replace('$', '', regex=True)
+    alertsDF['Max Gain'] = alertsDF['Max Gain'].str.replace(',', '', regex=True)
     alertsDF['Max Gain %'] = alertsDF['Max Gain %'].str.replace(')', '', regex=True)
     alertsDF['Max Gain %'] = alertsDF['Max Gain %'].str.replace('(', '', regex=True)
     alertsDF['Max Gain %'] = alertsDF['Max Gain %'].str.replace('%', '', regex=True)
+    alertsDF['Max Gain %'] = alertsDF['Max Gain %'].str.replace(',', '', regex=True)
     alertsDF['Max Gain'] = alertsDF['Max Gain'].astype('float')
     alertsDF['Max Gain %'] = alertsDF['Max Gain %'].astype('float')
 
     # Clean up Max Loss columns
     # split into individual $ and % columns
     # recast columns to ensure they are floats
-    alertsDF[['Max Loss', 'Max Loss %']] = alertsDF['Contract Low'].str.split(' ', expand=True)
+    alertsDF[['Max Loss %', 'Max Loss']] = alertsDF['Contract Low'].str.split(' ', expand=True)
     alertsDF['Max Loss'] = alertsDF['Max Loss'].str.replace('$', '', regex=True)
+    alertsDF['Max Loss'] = alertsDF['Max Loss'].str.replace(',', '', regex=True)
     alertsDF['Max Loss %'] = alertsDF['Max Loss %'].str.replace(')', '', regex=True)
     alertsDF['Max Loss %'] = alertsDF['Max Loss %'].str.replace('(', '', regex=True)
     alertsDF['Max Loss %'] = alertsDF['Max Loss %'].str.replace('%', '', regex=True)
+    #alertsDF['Max Gain %'] = alertsDF['Max Gain %'].str.replace(',', '', regex=True)
     alertsDF['Max Loss'] = alertsDF['Max Loss'].astype('float')
     alertsDF['Max Loss %'] = alertsDF['Max Loss %'].astype('float')
 
@@ -589,6 +600,22 @@ def quickAnalysis_generalAlerts(sheetName):
     print('Alerts in Best Slice')
     print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']])
 
+#####
+# Summarize basic stats by 'watchlist' 
+# for each watchlist plt scatters comparing all cols 
+#####
+def analyzeMyHunt(alertsDF):
+    # for each unique watchlist in the passed in alertsDF
+    # #alerts, avg max gain, std deviation of max gain
+    summary = alertsDF.groupby(by='Watchlist').agg({ 'Max Gain %' : ['count', 'mean', 'min', 'max', 'std'] })
+
+    print(summary)
+
+    plotReturns(alertsDF)
+    #result = df.groupby('Type').agg({'top_speed(mph)': ['mean', 'min', 'max']})
+
+
+
 
 #globalSymbols = globalSymbolAnalysis()
 #globalSymbols.sort_values(by='Percent Above 100', inplace=True, ascending=False)
@@ -598,13 +625,18 @@ def quickAnalysis_generalAlerts(sheetName):
 
 #quickAnalysis_generalAlerts('ask<4;IV<150')
 
-myAlerts = getAlerts('cramerbear')
+myAlerts = getAlerts('Sheet1')
 
-quickAnalysis(myAlerts)
+#quickAnalysis(myAlerts)
+analyzeMyHunt(myAlerts)
+print(myAlerts.columns)
+baseline = myAlerts.loc[(myAlerts['Watchlist'] == 'Low IV+DTE ($3M+)') & (myAlerts['Max Gain %'] < 800 )].drop(columns=['Underlying', 'Tier', 'Sector','Emojis', 'Watchlist', 'Alert Date', 'Strike', 'Max Loss %', 'Max Loss', 'Max Gain' ], axis=1) 
+#baseline.drop(columns=['Actions'], axis=1) 
+#alertsDF = alertsDF.drop(columns=['Actions'], axis=1) 
 
-baseline = getSliceAlerts(myAlerts, 'baseline')[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'DTE', '% Diff', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']]
+#baseline = getSliceAlerts(myAlerts, 'baseline')[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'DTE', '% Diff', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']]
 
-baseline = baseline.loc[baseline['Max Gain %'] > 100]
+#baseline = baseline.loc[baseline['Max Gain %'] > 100]
 
 #alerts_IV40 = myAlerts.loc[(myAlerts['IV'] < 40) & (myAlerts['Daily $ Vol'] < 50000)][['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', '% Diff', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']]
 #quickAnalysis(alerts_IV40)
@@ -637,8 +669,8 @@ baseline = baseline.loc[baseline['Max Gain %'] > 100]
 # Plotting 
 #####
 # Plots scatter of each column 
-#sns.pairplot(baseline, hue='Option Type', aspect=1.5)
+sns.pairplot(baseline, aspect=1.5)
 #sns.pairplot(alertsDF_reduced, hue='Tier', aspect=1.5 )
 #plotReturns(30)
 
-#plt.show()
+plt.show()
