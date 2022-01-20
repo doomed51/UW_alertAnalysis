@@ -1,5 +1,6 @@
 from datetime import datetime
 from os import P_DETACH, replace
+from turtle import color
 from matplotlib.colors import LinearSegmentedColormap
 from numpy.core.defchararray import index
 from numpy.core.fromnumeric import partition
@@ -11,8 +12,10 @@ from sklearn.cluster import KMeans
 
 import pandas as pd 
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import seaborn as sns
 import time
+import math
 
 # Input: symbol name or sheet name 
 # Out: Dataframe of cleansed alerts  
@@ -88,20 +91,9 @@ def cleanAlertsData(alertsDF):
 
     # clean up Time column i.e. alert time, leaving only the date
     
-    print(alertsDF['Time'].max())
-    print("")
-    print(alertsDF['Time'].head(10))
-    print("")
-    print("")
-
     alertsDF['Alert Date'] = alertsDF['Time'].astype(str).str[:-9]
     alertsDF['Alert Date'] = pd.to_datetime(alertsDF['Alert Date'], dayfirst=True)
     alertsDF['Expiry'] = pd.to_datetime(alertsDF['Expiry'], dayfirst=True)
-
-    print(alertsDF['Alert Date'].max())
-    print("")
-    print(alertsDF['Alert Date'].head(10))
-
 
     # remove trailing spaces & recast 
     alertsDF['Option'].str.strip()
@@ -182,30 +174,6 @@ def createSlices_maxGain(alertsDF):
     over100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]
     over200 = alertsDF.loc[(alertsDF['Max Gain %'] <= 1000) & (alertsDF['Max Gain %'] > 200)]
     over1000 = alertsDF.loc[(alertsDF['Max Gain %'] > 1000)]
-
-#####
-# Plot Max Gain % as the following: 
-# 1. Call/Put highs over time 
-# 2. highs histogram (call/put combined) 
-#####
-def plotReturns(alertsDF, title="Calls vs. Puts"): 
-    #fig, ax = plt.subplots(2)
-    #ax[0].plot(alertsDF['Alert Date'], alertsDF['Max Gain %'], #label='Option Type')
-    #ax[1] = alertsDF['Max Gain %'].plot.hist(bins = bins, alpha=1)
-    #alertsDF.plot(kind='line', x='Alert Date', y='Max Gain %', color=alertsDF['Option Type'] )
-    
-    alertsDF.sort_values(by='Alert Date', inplace=True, ascending=False)
-    calls = alertsDF.loc[alertsDF['Option Type'] == 'Call']
-    puts = alertsDF.loc[alertsDF['Option Type'] == 'Put']
-
-    with plt.style.context('ggplot'):
-        plt.figure(figsize=(10,5))
-        plt.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
-        plt.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
-        #plt.rcParams["figure.figsize"] = (20,30)
-        plt.title(label=title)
-        plt.legend()
-        plt.show()
 
 #####
 # Cleaninig up the slices to remove unnneeded columns i.e. strings 
@@ -522,31 +490,6 @@ def compareAlertSlices(sheetNames):
     return alertsDF_combined
 
 #####
-# Funtion to run computations on the entire body of available 
-# symbols 
-#####
-def globalSymbolAnalysis():
-    print('')
-    print('#########################################################')
-    print('Analyzing all available symbols')
-    start = time.perf_counter()
-    
-    #symbolList = alertsDF_map.keys()
-    globalAlertStats = compareAlertSlices(alertsDF_map.keys())
-    globalAlertStats.sort_values(by='Percent Above 100', inplace=True, ascending=False)
-    
-    end = time.perf_counter()
-    print('Success!!')
-    print('')
-    print(f"Elapsed Time: {end - start:0.4f} seconds")
-    #print('# Unique Symbols Scanned:', globalAlertStats['Symbol'].nunique())
-    print('')
-    print('#########################################################')
-    print('')
-    
-    return globalAlertStats
-
-#####
 # Look for the most frequently occuring symbols
 #####
 def findSymbolsWithHighFrequency(cleanAlertsDF):
@@ -555,10 +498,62 @@ def findSymbolsWithHighFrequency(cleanAlertsDF):
     groupedAlerts = cleanAlertsDF.groupby(by='Symbol').count()
     print(groupedAlerts.head(10))
 
+#####
+# Plot Max Gain % as the following: 
+# 1. Call/Put highs over time 
+# 2. highs histogram (call/put combined) 
+#####
+def plotReturns(alertsDF_list, title="Calls vs. Puts"): 
+    #fig, ax = plt.subplots(2)
+    #ax[0].plot(alertsDF['Alert Date'], alertsDF['Max Gain %'], #label='Option Type')
+    #ax[1] = alertsDF['Max Gain %'].plot.hist(bins = bins, alpha=1)
+    #alertsDF.plot(kind='line', x='Alert Date', y='Max Gain %', color=alertsDF['Option Type'] )
+    numRows = len(alertsDF_list)
+    
+    with plt.style.context(("seaborn","ggplot")):
+        fig = plt.figure(constrained_layout=True, figsize=(15,5))
+        specs = gridspec.GridSpec(ncols=2, nrows=numRows, figure=fig) ## Declaring 1xnumRows figure
+        
+        count = 0 
+        for alertsDF in alertsDF_list:
+            count += 1
+            alertsDF.sort_values(by='Alert Date', inplace=True, ascending=False)
+            calls = alertsDF.loc[alertsDF['Option Type'] == 'Call']
+            puts = alertsDF.loc[alertsDF['Option Type'] == 'Put']
+            
+            #plot returns over time, labeled by call and put
+            x1 = fig.add_subplot(numRows, 2, count) # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.subplot.html
+            
+            x1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
+            x1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
+            
+            #plot histogram of returns 
+            count +=1 
+            numBins = math.ceil((alertsDF['Max Gain %'].max() - alertsDF['Max Gain %'].min())/3)
+            x2 = fig.add_subplot(numRows, 2, count)
+            x2.hist(alertsDF['Max Gain %'], color='tab:orange', bins=numBins)
+            
 
-symbolList = [ 'AAPL', 'AMZN', 'BA', 'CCL', 'GM', 'MRNA', 
-                'NET', 'NVDA', 'TWTR', 'CLF', 'FB', 'F']
+           #x2.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
+           #x2.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
 
+        #ax1 = fig.add_subplot(specs[0,:])
+        #ax1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
+        #ax1.set_title(title)
+        #ax1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
+        
+        #ax2 = fig.add_subplot(specs[0,1])
+        #ax2.set_title('Puts')
+        
+        #plt.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
+        #plt.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
+        
+        #plt.figure(figsize=(10,5))
+        #plt.title(label=title)
+        #plt.legend()
+
+        plt.show()
+        plt.close(fig)
 
 def quickAnalysis(alertsDF):
     symbolAlerts = alertsDF
@@ -567,28 +562,28 @@ def quickAnalysis(alertsDF):
     sliceStats.sort_values(by='Percent Above 100', inplace=True, ascending=False)
     
     print('')
-    print('Slices for Alert list')
+    print('Slices stats...')
     print(sliceStats)
     
     slices = sliceStats.loc[sliceStats['Total Alerts'] > 10]
     
     bestSlice = slices.loc[ (slices['Percent Above 100'] == slices['Percent Above 100'].max()) ]['Slice Name']
-    
     alertsInBestSlice = getSliceAlerts(symbolAlerts, bestSlice.iloc[0])
     baseline = getSliceAlerts(symbolAlerts, 'baseline')
 
     print('')
-    print('Printing Alerts in best slice:', bestSlice.iloc[0])
+    print('Printing Alerts in best slice...', bestSlice.iloc[0])
     print('')
     print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
 
     print('')
-    print('Baseline Alerts')
+    print('Baseline Alerts...')
     print('')
     print(baseline.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
 
-    plotReturns(alertsInBestSlice, title=bestSlice.iloc[0])
-    plotReturns(baseline, 'Baseline')
+    #plotReturns(alertsInBestSlice, title=bestSlice.iloc[0])
+    
+    plotReturns([baseline, alertsInBestSlice], 'Baseline')
 
 #############
 ################### DEPRECATED
