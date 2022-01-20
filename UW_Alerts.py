@@ -192,18 +192,20 @@ def plotReturns(alertsDF, title="Calls vs. Puts"):
     #fig, ax = plt.subplots(2)
     #ax[0].plot(alertsDF['Alert Date'], alertsDF['Max Gain %'], #label='Option Type')
     #ax[1] = alertsDF['Max Gain %'].plot.hist(bins = bins, alpha=1)
-    
     #alertsDF.plot(kind='line', x='Alert Date', y='Max Gain %', color=alertsDF['Option Type'] )
+    
     alertsDF.sort_values(by='Alert Date', inplace=True, ascending=False)
     calls = alertsDF.loc[alertsDF['Option Type'] == 'Call']
     puts = alertsDF.loc[alertsDF['Option Type'] == 'Put']
 
-    plt.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
-
-    plt.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
-    plt.title(label=title)
-    plt.legend()
-    plt.show()
+    with plt.style.context('ggplot'):
+        plt.figure(figsize=(10,5))
+        plt.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
+        plt.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
+        #plt.rcParams["figure.figsize"] = (20,30)
+        plt.title(label=title)
+        plt.legend()
+        plt.show()
 
 #####
 # Cleaninig up the slices to remove unnneeded columns i.e. strings 
