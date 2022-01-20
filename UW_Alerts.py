@@ -396,6 +396,7 @@ def generateSliceStats(alertsDF, sheetName = 'default'):
     # alertsDF['DTE'] = (alertsDF['Expiry'] - alertsDF['Alert Date']).dt.days
 
     return alertSlices
+
 #####
 # Takes in any Alerts dump and returns the alerts that are within the passed in sliceName
 #####
@@ -511,7 +512,7 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
     numRows = len(alertsDF_list)
     
     with plt.style.context(("seaborn","ggplot")):
-        fig = plt.figure(constrained_layout=True, figsize=(15,5))
+        fig = plt.figure(constrained_layout=True, figsize=(15,10))
         specs = gridspec.GridSpec(ncols=2, nrows=numRows, figure=fig) ## Declaring 1xnumRows figure
         
         count = 0 
@@ -529,7 +530,7 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
             
             #plot histogram of returns 
             count +=1 
-            numBins = math.ceil((alertsDF['Max Gain %'].max() - alertsDF['Max Gain %'].min())/3)
+            numBins = 10 #math.ceil((alertsDF['Max Gain %'].max() - alertsDF['Max Gain %'].min())/3)
             x2 = fig.add_subplot(numRows, 2, count)
             x2.hist(alertsDF['Max Gain %'], color='tab:orange', bins=numBins)
             
@@ -565,14 +566,16 @@ def quickAnalysis(alertsDF):
     print('Slices stats...')
     print(sliceStats)
     
-    slices = sliceStats.loc[sliceStats['Total Alerts'] > 10]
-    
-    bestSlice = slices.loc[ (slices['Percent Above 100'] == slices['Percent Above 100'].max()) ]['Slice Name']
-    alertsInBestSlice = getSliceAlerts(symbolAlerts, bestSlice.iloc[0])
+    alertsInBestSlice = getSliceAlerts(symbolAlerts, sliceStats.iloc[0]['Slice Name'])
     baseline = getSliceAlerts(symbolAlerts, 'baseline')
-
+    
+    listOfSlices = list()
+    for n in range(4):
+        alertsInSlice = getSliceAlerts(symbolAlerts, sliceStats.iloc[n]['Slice Name'])
+        listOfSlices.append(alertsInSlice)
+    
     print('')
-    print('Printing Alerts in best slice...', bestSlice.iloc[0])
+    print('Printing Alerts in best slice...', sliceStats.iloc[0]['Slice Name'])
     print('')
     print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
 
@@ -583,7 +586,7 @@ def quickAnalysis(alertsDF):
 
     #plotReturns(alertsInBestSlice, title=bestSlice.iloc[0])
     
-    plotReturns([baseline, alertsInBestSlice], 'Baseline')
+    plotReturns([baseline, listOfSlices[0], listOfSlices[1], listOfSlices[2], listOfSlices[3]])
 
 #############
 ################### DEPRECATED
