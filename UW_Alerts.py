@@ -87,10 +87,21 @@ def cleanAlertsData(alertsDF):
     alertsDF = alertsDF.drop(columns=['Actions'], axis=1) 
 
     # clean up Time column i.e. alert time, leaving only the date
-    alertsDF['Alert Date'] = alertsDF['@'].astype(str).str[:-8]
-    print(alertsDF['Alert Date'].head())
-    alertsDF['Alert Date'] = pd.to_datetime(alertsDF['Alert Date'])
-    alertsDF['Expiry'] = pd.to_datetime(alertsDF['Expiry'])
+    
+    print(alertsDF['Time'].max())
+    print("")
+    print(alertsDF['Time'].head(10))
+    print("")
+    print("")
+
+    alertsDF['Alert Date'] = alertsDF['Time'].astype(str).str[:-9]
+    alertsDF['Alert Date'] = pd.to_datetime(alertsDF['Alert Date'], dayfirst=True)
+    alertsDF['Expiry'] = pd.to_datetime(alertsDF['Expiry'], dayfirst=True)
+
+    print(alertsDF['Alert Date'].max())
+    print("")
+    print(alertsDF['Alert Date'].head(10))
+
 
     # remove trailing spaces & recast 
     alertsDF['Option'].str.strip()
@@ -112,7 +123,7 @@ def cleanAlertsData(alertsDF):
     # split into individual $ and % columns
     # recast columns to ensure they are floats 
     # drop the old columns 
-    alertsDF[['Max Gain %', 'Max Gain']] = alertsDF['Contract High'].str.split(' ', expand=True)
+    alertsDF[['Max Gain', 'Max Gain %']] = alertsDF['High'].str.split(' ', expand=True)
     alertsDF['Max Gain'] = alertsDF['Max Gain'].str.replace('$', '', regex=True)
     alertsDF['Max Gain'] = alertsDF['Max Gain'].str.replace(',', '', regex=True)
     alertsDF['Max Gain %'] = alertsDF['Max Gain %'].str.replace(')', '', regex=True)
@@ -125,7 +136,7 @@ def cleanAlertsData(alertsDF):
     # Clean up Max Loss columns
     # split into individual $ and % columns
     # recast columns to ensure they are floats
-    alertsDF[['Max Loss %', 'Max Loss']] = alertsDF['Contract Low'].str.split(' ', expand=True)
+    alertsDF[['Max Loss', 'Max Loss %']] = alertsDF['Low'].str.split(' ', expand=True)
     alertsDF['Max Loss'] = alertsDF['Max Loss'].str.replace('$', '', regex=True)
     alertsDF['Max Loss'] = alertsDF['Max Loss'].str.replace(',', '', regex=True)
     alertsDF['Max Loss %'] = alertsDF['Max Loss %'].str.replace(')', '', regex=True)
@@ -139,7 +150,7 @@ def cleanAlertsData(alertsDF):
     alertsDF.fillna(0, inplace=True)
 
     # drop the old columns
-    alertsDF = alertsDF.drop(columns=['Contract High','Contract Low', '@'], axis=1)
+    alertsDF = alertsDF.drop(columns=['High','Low', 'Time'], axis=1)
 
     #####
     # Adding compuited columns:
@@ -203,14 +214,14 @@ def prepAlertsDataForKMeans(alertsDF, type='all'):
     dataframeOfFloats = pd.DataFrame()
 
     if type == 'all':
-        dataframeOfFloats = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Sector', 'Underlying', '% Diff', 'OG ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
+        dataframeOfFloats = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Sector', 'Underlying', '% Diff', 'Ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
     
 
     elif type == 'optionType':
-        dataframeOfFloats = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Sector', 'Underlying', 'OG ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
+        dataframeOfFloats = alertsDF.drop( ['Symbol', 'Expiry', 'Max Loss', 'Sector', 'Underlying', 'Ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
 
     elif type == 'sector':
-        dataframeOfFloats = alertsDF.drop(['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Underlying', '% Diff', 'OG ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
+        dataframeOfFloats = alertsDF.drop(['Symbol', 'Expiry', 'Max Loss', 'Option Type', 'Underlying', '% Diff', 'Ask', 'Alert Date', 'Tier', 'Max Gain' ], axis=1 )
 
     return dataframeOfFloats
 
@@ -322,11 +333,11 @@ def generateSliceStats(alertsDF, sheetName = 'default'):
     
     alertSlices = generalAlertStats(alertsDF, 'baseline', sheetName=sheetName)
     
-    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Daily $ Vol'] < 100000) & (alertsDF['OI'] < alertsDF['Volume']))]
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Total $'] < 100000) & (alertsDF['OI'] < alertsDF['Volume']))]
     if not alertsDF_reduced.empty:
         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'$vol<100K;OI<Vol', sheetName=sheetName ))
 
-    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Daily $ Vol'] < 100000) & (alertsDF['IV'] < 40))]
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Total $'] < 100000) & (alertsDF['IV'] < 40))]
     if not alertsDF_reduced.empty:
         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'$vol<100K;IV<40', sheetName=sheetName ))
     
@@ -343,7 +354,7 @@ def generateSliceStats(alertsDF, sheetName = 'default'):
         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'Premium; DTE>20', sheetName=sheetName ))
     
     # ask < 4;  volume < median;    % diff > 20
-    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['OG ask'] < 4) & (alertsDF['Volume'] > alertsDF['Volume'].median()) & (alertsDF['% Diff'] > 0.2) )]
+    alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Ask'] < 4) & (alertsDF['Volume'] > alertsDF['Volume'].median()) & (alertsDF['% Diff'] > 0.2) )]
     if not alertsDF_reduced.empty:
         alertSlices = alertSlices.append(generalAlertStats(alertsDF_reduced,'ask<4;vol>med;diff>20', sheetName=sheetName ))
     
@@ -423,7 +434,7 @@ def getSliceAlerts(alertsDF, sliceName):
     selectedSlice = alertsDF
     
     if sliceName == '$vol<100K;OI<Vol':
-        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Daily $ Vol'] < 100000) & (selectedSlice['OI'] < selectedSlice['Volume']))]
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Total $'] < 100000) & (selectedSlice['OI'] < selectedSlice['Volume']))]
     
     elif sliceName == 'DTE>20':
         selectedSlice = selectedSlice.loc[ ( selectedSlice['DTE'] > 20)]
@@ -438,10 +449,10 @@ def getSliceAlerts(alertsDF, sliceName):
         selectedSlice = selectedSlice.loc[ ( (selectedSlice['Tier'] == 'premium') & (selectedSlice['DTE'] < 20))]
         
     elif sliceName == 'ask<4;vol>med;diff>20':
-        selectedSlice = selectedSlice.loc[ ( (selectedSlice['OG ask'] < 4) & (selectedSlice['Volume'] > selectedSlice['Volume'].median()) & (selectedSlice['% Diff'] > 0.2) )]
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Ask'] < 4) & (selectedSlice['Volume'] > selectedSlice['Volume'].median()) & (selectedSlice['% Diff'] > 0.2) )]
     
     elif sliceName == '$vol<100K;IV<40':
-        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Daily $ Vol'] < 100000) & (selectedSlice['IV'] < 40))]
+        selectedSlice = selectedSlice.loc[ ( (selectedSlice['Total $'] < 100000) & (selectedSlice['IV'] < 40))]
     
     elif sliceName == 'CallsBullish':
         selectedSlice = selectedSlice.loc[ ( (selectedSlice['Option Type'] == 'Call') & (selectedSlice['Emojis'].str.contains("Bullish")) )]
@@ -567,16 +578,19 @@ def quickAnalysis(alertsDF):
     print('')
     print('Printing Alerts in best slice:', bestSlice.iloc[0])
     print('')
-    print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']])
+    print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
 
     print('')
     print('Baseline Alerts')
     print('')
-    print(baseline.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']])
+    print(baseline.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
 
     plotReturns(alertsInBestSlice, title=bestSlice.iloc[0])
     plotReturns(baseline, 'Baseline')
 
+#############
+################### DEPRECATED
+#############
 def quickAnalysis_generalAlerts(sheetName):
     print('')
     print('Quick Analysis on:', sheetName)
@@ -598,7 +612,7 @@ def quickAnalysis_generalAlerts(sheetName):
     print(selectSlices.loc[ (selectSlices['Percent Above 100'] == selectSlices['Percent Above 100'].max())])
     print('')
     print('Alerts in Best Slice')
-    print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']])
+    print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
 
 #####
 # Summarize basic stats by 'watchlist' 
@@ -625,30 +639,21 @@ def analyzeMyHunt(alertsDF):
 
 #quickAnalysis_generalAlerts('ask<4;IV<150')
 
-myAlerts = getAlerts('Sheet1')
+myAlerts = getAlerts('CRM')
 
-#quickAnalysis(myAlerts)
-analyzeMyHunt(myAlerts)
-print(myAlerts.columns)
-baseline = myAlerts.loc[(myAlerts['Watchlist'] == 'Low IV+DTE ($3M+)') & (myAlerts['Max Gain %'] < 800 )].drop(columns=['Underlying', 'Tier', 'Sector','Emojis', 'Watchlist', 'Alert Date', 'Strike', 'Max Loss %', 'Max Loss', 'Max Gain' ], axis=1) 
-#baseline.drop(columns=['Actions'], axis=1) 
-#alertsDF = alertsDF.drop(columns=['Actions'], axis=1) 
 
-#baseline = getSliceAlerts(myAlerts, 'baseline')[['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', 'DTE', '% Diff', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']]
+quickAnalysis(myAlerts)
 
-#baseline = baseline.loc[baseline['Max Gain %'] > 100]
-
-#alerts_IV40 = myAlerts.loc[(myAlerts['IV'] < 40) & (myAlerts['Daily $ Vol'] < 50000)][['Symbol', 'Strike', 'Option Type', 'Expiry', 'OG ask', 'Max Gain %', '% Diff', 'Daily $ Vol', 'IV', 'OI', 'Alert Date']]
-#quickAnalysis(alerts_IV40)
-
-#print(alerts_IV40)
-
+#analyzeMyHunt(myAlerts)
+#print(myAlerts.columns)
+#baseline = myAlerts.loc[(myAlerts['Watchlist'] == 'Low IV+DTE ($3M+)') & (myAlerts['Max Gain %'] < 800 ) & (myAlerts['Max Gain %'] > 50 ) ].drop(columns=['Underlying', 'Tier', 'Sector','Emojis', 'Watchlist', 'Alert Date', 'Strike', 'Max Loss %', 'Max Loss', 'Max Gain' ], axis=1) 
 
 #findSymbolsWithHighFrequency(cleanAlertsData(alertsDF_map['ask1to4IVund200']))
 
+######################
+
 #mySliceAlerts = getSliceAlerts('SBUX', 'baseline')
 #print(mySliceAlerts)
-
 #print( generalAlertStats(cleanAlertsData(alertsDF_map['SBUX'])) )
 #plotReturns(mySliceAlerts)
 
@@ -669,8 +674,8 @@ baseline = myAlerts.loc[(myAlerts['Watchlist'] == 'Low IV+DTE ($3M+)') & (myAler
 # Plotting 
 #####
 # Plots scatter of each column 
-sns.pairplot(baseline, aspect=1.5)
+#sns.pairplot(baseline, aspect=1.5)
 #sns.pairplot(alertsDF_reduced, hue='Tier', aspect=1.5 )
 #plotReturns(30)
 
-plt.show()
+#plt.show()
