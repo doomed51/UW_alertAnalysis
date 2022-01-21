@@ -15,12 +15,11 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
 import time
-import math
 
-# Input: symbol name or sheet name 
-# Out: Dataframe of cleansed alerts  
-# Why: less effort to go between symbol alert and general alert spreadsheet
-def getAlerts(symbolOrSheetName):
+#####
+# Retrieves relevant alerts from excel files
+#####
+def getAlerts(symbolOrSheetName = 'all symbols'):
     # Location of the file that contains the alerts dump
     filePaths = [r"F:\workbench\UW_Alerts\UW_alerts_symbols.xlsx", 
         r"F:\workbench\UW_Alerts\UW_alerts.xlsx",
@@ -30,37 +29,53 @@ def getAlerts(symbolOrSheetName):
     print('Loading files ...')
     start = time.perf_counter()
     
-    workbook_symbol = load_workbook(filename=filePaths[0])
-    workbook = load_workbook(filename=filePaths[1])
-    workbook_myHunt = load_workbook(filename=filePaths[2])
-
-    print('Success!')
-    print('')
-    if symbolOrSheetName in workbook_symbol.sheetnames:
-        print('Sheet found, loading alerts ...')
+    if symbolOrSheetName == 'all symbols':
+        workbook_symbol = load_workbook(filename=filePaths[0])
         alertsDF_map = pd.read_excel(filePaths[0], sheet_name=None)
-    elif symbolOrSheetName in workbook.sheetnames:
-        print('Sheet found, loading alerts ...')
-        alertsDF_map = pd.read_excel(filePaths[1], sheet_name=None)
-    elif symbolOrSheetName in workbook_myHunt.sheetnames:
-        print('Sheet found, loading alerts ...')
-        alertsDF_map = pd.read_excel(filePaths[2], sheet_name=None)
+    
+        print('Success!')
+        print('')
+        
+        end = time.perf_counter()
+        print('Success!')
+        print('')
+        print(f"Elapsed Time: {end - start:0.4f} seconds")
+        print('#########################################################')
+        print('')
+        return alertsDF_map
+    
     else:
-        print("Sheet not found!!")
-        exit()
-    
-    end = time.perf_counter()
-    print('Success!')
-    print('')
-    print(f"Elapsed Time: {end - start:0.4f} seconds")
-    print('#########################################################')
-    print('')
+        workbook_symbol = load_workbook(filename=filePaths[0])
+        workbook = load_workbook(filename=filePaths[1])
+        workbook_myHunt = load_workbook(filename=filePaths[2])
 
-    return cleanAlertsData(alertsDF_map[symbolOrSheetName])
-    
+        if symbolOrSheetName in workbook_symbol.sheetnames:
+            print('Sheet found, loading alerts ...')
+            alertsDF_map = pd.read_excel(filePaths[0], sheet_name=None)
+        elif symbolOrSheetName in workbook.sheetnames:
+            print('Sheet found, loading alerts ...')
+            alertsDF_map = pd.read_excel(filePaths[1], sheet_name=None)
+        elif symbolOrSheetName in workbook_myHunt.sheetnames:
+            print('Sheet found, loading alerts ...')
+            alertsDF_map = pd.read_excel(filePaths[2], sheet_name=None)
+        else:
+            print("Sheet not found!!")
+            exit()
 
-    
+        print('Success!')
+        print('')
+        
+        end = time.perf_counter()
+        print('Success!')
+        print('')
+        print(f"Elapsed Time: {end - start:0.4f} seconds")
+        print('#########################################################')
+        print('')
 
+        return cleanAlertsData(alertsDF_map[symbolOrSheetName])
+    
+           
+    
 #####
 # Util function
 ##
@@ -72,6 +87,7 @@ def replaceText(row):
         return 'Call'
     else:
         return 'Put'
+
 #####
 # Util function
 ##
@@ -102,6 +118,7 @@ def cleanAlertsData(alertsDF):
 
     #split the Option col into symbol and strike
     alertsDF[['Option', 'Strike']] = alertsDF['Option'].str.split('$', expand=True)
+    alertsDF['Option'] = alertsDF['Option'].str.strip()
     alertsDF['Strike'] = alertsDF['Strike'].str.strip()
     alertsDF.rename(columns={'Option': 'Symbol'}, inplace=True)
 
@@ -150,30 +167,6 @@ def cleanAlertsData(alertsDF):
     alertsDF['DTE'] = (alertsDF['Expiry'] - alertsDF['Alert Date']).dt.days
 
     return alertsDF
-
-#####
-# Create slices of alertsDF data based on the % return
-# for easier analysis 
-#####
-# TODO deprecate this function....
-# 
-# TODO make this function actually return a dataframe
-# TODO add .copy() to df selection
-# TODO append the slices into 1 data frame 
-# TODO have to escape empty dataframe results on the .loc
-def createSlices_maxGain(alertsDF):
-    maxGainSlices = pd.DataFrame()
-    
-    below0 = alertsDF.loc[alertsDF['Max Gain %'] <= 0].copy()
-    below0['Slice'] = 'below50'
-    
-    below50 = alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 0)].copy()
-    below50['Slice'] = 'below50'
-    maxGainSlices.append(below0, below50)
-    below100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]
-    over100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]
-    over200 = alertsDF.loc[(alertsDF['Max Gain %'] <= 1000) & (alertsDF['Max Gain %'] > 200)]
-    over1000 = alertsDF.loc[(alertsDF['Max Gain %'] > 1000)]
 
 #####
 # Cleaninig up the slices to remove unnneeded columns i.e. strings 
@@ -301,7 +294,7 @@ def generalAlertStats(alertsDF1, sliceName = 'default', sheetName = 'default'):
 #####
 def generateSliceStats(alertsDF, sheetName = 'default'):
     
-    alertSlices = generalAlertStats(alertsDF, 'baseline', sheetName=sheetName)
+    alertSlices = generalAlertStats(alertsDF, 'baseline-%s'%(alertsDF['Symbol'][0]), sheetName=sheetName)
     
     alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Total $'] < 100000) & (alertsDF['OI'] < alertsDF['Volume']))]
     if not alertsDF_reduced.empty:
@@ -504,54 +497,35 @@ def findSymbolsWithHighFrequency(cleanAlertsDF):
 # 1. Call/Put highs over time 
 # 2. highs histogram (call/put combined) 
 #####
+# TODO normalize the bins on the histogram so they are comparable between slices
 def plotReturns(alertsDF_list, title="Calls vs. Puts"): 
-    #fig, ax = plt.subplots(2)
-    #ax[0].plot(alertsDF['Alert Date'], alertsDF['Max Gain %'], #label='Option Type')
-    #ax[1] = alertsDF['Max Gain %'].plot.hist(bins = bins, alpha=1)
-    #alertsDF.plot(kind='line', x='Alert Date', y='Max Gain %', color=alertsDF['Option Type'] )
-    numRows = len(alertsDF_list)
+    numRows = len(alertsDF_list) # Set the size of the figure
     
     with plt.style.context(("seaborn","ggplot")):
-        fig = plt.figure(constrained_layout=True, figsize=(15,10))
+        fig = plt.figure(constrained_layout=True, figsize=(numRows * 3.2,10))
         specs = gridspec.GridSpec(ncols=2, nrows=numRows, figure=fig) ## Declaring 1xnumRows figure
         
         count = 0 
         for alertsDF in alertsDF_list:
+            symbol = alertsDF['Symbol'][0]
+            slice = alertsDF['Slice Name'][0] 
             count += 1
             alertsDF.sort_values(by='Alert Date', inplace=True, ascending=False)
             calls = alertsDF.loc[alertsDF['Option Type'] == 'Call']
             puts = alertsDF.loc[alertsDF['Option Type'] == 'Put']
             
-            #plot returns over time, labeled by call and put
+            # LINEGRAPH: plot returns over time, labeled by call and put
             x1 = fig.add_subplot(numRows, 2, count) # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.subplot.html
             
             x1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
             x1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
-            
-            #plot histogram of returns 
-            count +=1 
+            x1.set_title("%s - %s - Plot"%(slice, symbol))
+            # HISTOGRAM: returns
+            count +=1 #bump up index in gridspec 
             numBins = 10 #math.ceil((alertsDF['Max Gain %'].max() - alertsDF['Max Gain %'].min())/3)
             x2 = fig.add_subplot(numRows, 2, count)
             x2.hist(alertsDF['Max Gain %'], color='tab:orange', bins=numBins)
-            
-
-           #x2.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
-           #x2.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
-
-        #ax1 = fig.add_subplot(specs[0,:])
-        #ax1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
-        #ax1.set_title(title)
-        #ax1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
-        
-        #ax2 = fig.add_subplot(specs[0,1])
-        #ax2.set_title('Puts')
-        
-        #plt.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
-        #plt.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
-        
-        #plt.figure(figsize=(10,5))
-        #plt.title(label=title)
-        #plt.legend()
+            x2.set_title("%s - %s - Histo"%(slice, symbol))
 
         plt.show()
         plt.close(fig)
@@ -562,16 +536,15 @@ def quickAnalysis(alertsDF):
     sliceStats = generateSliceStats(symbolAlerts)
     sliceStats.sort_values(by='Percent Above 100', inplace=True, ascending=False)
     
-    print('')
-    print('Slices stats...')
-    print(sliceStats)
-    
     alertsInBestSlice = getSliceAlerts(symbolAlerts, sliceStats.iloc[0]['Slice Name'])
     baseline = getSliceAlerts(symbolAlerts, 'baseline')
+    baseline['Slice Name'] = 'baseline'
     
     listOfSlices = list()
     for n in range(4):
         alertsInSlice = getSliceAlerts(symbolAlerts, sliceStats.iloc[n]['Slice Name'])
+        alertsInSlice['Slice Name'] = sliceStats.iloc[n]['Slice Name'] #add slice name to the retrieved slice for later use
+        alertsInSlice.reset_index(drop=True, inplace=True)
         listOfSlices.append(alertsInSlice)
     
     print('')
@@ -584,9 +557,122 @@ def quickAnalysis(alertsDF):
     print('')
     print(baseline.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
 
-    #plotReturns(alertsInBestSlice, title=bestSlice.iloc[0])
+    print('')
+    print('Slices stats...')
+    print(sliceStats)
     
     plotReturns([baseline, listOfSlices[0], listOfSlices[1], listOfSlices[2], listOfSlices[3]])
+
+#####
+# Summarize basic stats by 'watchlist' 
+# for each watchlist plt scatters comparing all cols 
+#####
+def analyzeMyHunt(alertsDF):
+    # for each unique watchlist in the passed in alertsDF
+    # #alerts, avg max gain, std deviation of max gain
+    summary = alertsDF.groupby(by='Watchlist').agg({ 'Max Gain %' : ['count', 'mean', 'min', 'max', 'std'] })
+
+    print(summary)
+
+    plotReturns(alertsDF)
+    #result = df.groupby('Type').agg({'top_speed(mph)': ['mean', 'min', 'max']})
+
+#####
+# Objective: Visualize return characterisitcs of the top 5 slices for all available Symbol alerts 
+###
+# DONE - load all symbol alerts 
+# compile slice stats for all 
+# rank slice stats by % above 100 and weighted by # alerts 
+# plot the return curves of the top 5 slices 
+def rankSymbolAlertSlices():
+    print('rankSymbolAlertSlices function is not done!!')
+    alertsMap = getAlerts('all symbols')
+    allSliceStats = pd.DataFrame()
+    # TODO get BASELINE stats of all symbols 
+
+    for key in alertsMap:
+        print(key)
+        symbolAlerts = cleanAlertsData(alertsMap[key])
+        sliceStats = generateSliceStats(symbolAlerts)
+        sliceStats = sliceStats.loc[sliceStats['Total Alerts'] > 10]
+        allSliceStats = pd.concat([allSliceStats, sliceStats])
+    
+    allSliceStats.sort_values(by='Percent Above 100', inplace=True, ascending=False)
+    allSliceStats.reset_index(drop=True, inplace = True)
+    
+    print(allSliceStats)
+
+    listOfSlices = list()
+    # plot the top 5 slices
+    for n in range(5):
+        symbol = allSliceStats['Symbol'][n]
+        sliceAlerts = getSliceAlerts( cleanAlertsData(alertsMap[symbol]), allSliceStats['Slice Name'][n] )
+        sliceAlerts.reset_index(drop=True, inplace=True)
+        sliceAlerts['Slice Name'] = allSliceStats['Slice Name'][n]
+        listOfSlices.append(sliceAlerts)
+    
+    plotReturns( [listOfSlices[0], listOfSlices[1], listOfSlices[2], listOfSlices[3], listOfSlices[4] ])
+    
+    
+
+
+###################################
+########## COMMAND ################
+###################################
+
+rankSymbolAlertSlices()
+#myAlerts = getAlerts('PTON')
+#quickAnalysis(myAlerts)
+
+#analyzeMyHunt(myAlerts)
+#print(myAlerts.columns)
+
+###################################
+###################################
+
+#####
+# Plotting clusters
+#####
+#elbowMethod(X_floatsOnly)
+#plotCluster(X_floatsOnly, 2)
+
+#####
+# Plotting 
+#####
+# Plots scatter of each column 
+#sns.pairplot(baseline, aspect=1.5)
+#sns.pairplot(alertsDF_reduced, hue='Tier', aspect=1.5 )
+#plotReturns(30)
+
+#plt.show()
+
+#############################################   ##################
+########################## UNUSED FUNCTIONS     ##################
+#############################################   ##################
+
+#####
+# Create slices of alertsDF data based on the % return
+# for easier analysis 
+#####
+# TODO deprecate this function....
+# 
+# TODO make this function actually return a dataframe
+# TODO add .copy() to df selection
+# TODO append the slices into 1 data frame 
+# TODO have to escape empty dataframe results on the .loc
+def createSlices_maxGain(alertsDF):
+    maxGainSlices = pd.DataFrame()
+    
+    below0 = alertsDF.loc[alertsDF['Max Gain %'] <= 0].copy()
+    below0['Slice'] = 'below50'
+    
+    below50 = alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 0)].copy()
+    below50['Slice'] = 'below50'
+    maxGainSlices.append(below0, below50)
+    below100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]
+    over100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]
+    over200 = alertsDF.loc[(alertsDF['Max Gain %'] <= 1000) & (alertsDF['Max Gain %'] > 200)]
+    over1000 = alertsDF.loc[(alertsDF['Max Gain %'] > 1000)]
 
 #############
 ################### DEPRECATED
@@ -613,69 +699,3 @@ def quickAnalysis_generalAlerts(sheetName):
     print('')
     print('Alerts in Best Slice')
     print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
-
-#####
-# Summarize basic stats by 'watchlist' 
-# for each watchlist plt scatters comparing all cols 
-#####
-def analyzeMyHunt(alertsDF):
-    # for each unique watchlist in the passed in alertsDF
-    # #alerts, avg max gain, std deviation of max gain
-    summary = alertsDF.groupby(by='Watchlist').agg({ 'Max Gain %' : ['count', 'mean', 'min', 'max', 'std'] })
-
-    print(summary)
-
-    plotReturns(alertsDF)
-    #result = df.groupby('Type').agg({'top_speed(mph)': ['mean', 'min', 'max']})
-
-
-
-
-#globalSymbols = globalSymbolAnalysis()
-#globalSymbols.sort_values(by='Percent Above 100', inplace=True, ascending=False)
-#print(globalSymbols.loc[globalSymbols['Total Alerts'] > 20].head(20))
-
-#quickAnalysis_Symbol('F')
-
-#quickAnalysis_generalAlerts('ask<4;IV<150')
-
-myAlerts = getAlerts('CRM')
-
-
-quickAnalysis(myAlerts)
-
-#analyzeMyHunt(myAlerts)
-#print(myAlerts.columns)
-#baseline = myAlerts.loc[(myAlerts['Watchlist'] == 'Low IV+DTE ($3M+)') & (myAlerts['Max Gain %'] < 800 ) & (myAlerts['Max Gain %'] > 50 ) ].drop(columns=['Underlying', 'Tier', 'Sector','Emojis', 'Watchlist', 'Alert Date', 'Strike', 'Max Loss %', 'Max Loss', 'Max Gain' ], axis=1) 
-
-#findSymbolsWithHighFrequency(cleanAlertsData(alertsDF_map['ask1to4IVund200']))
-
-######################
-
-#mySliceAlerts = getSliceAlerts('SBUX', 'baseline')
-#print(mySliceAlerts)
-#print( generalAlertStats(cleanAlertsData(alertsDF_map['SBUX'])) )
-#plotReturns(mySliceAlerts)
-
-######################
-
-
-#print(globalSymbols.loc[globalSymbols['Slice Name'] == 'CallsBullishAskSide'] )
-
-#printTheseResults( sheetname, slice name)
-
-#####
-# Plotting clusters
-#####
-#elbowMethod(X_floatsOnly)
-#plotCluster(X_floatsOnly, 2)
-
-#####
-# Plotting 
-#####
-# Plots scatter of each column 
-#sns.pairplot(baseline, aspect=1.5)
-#sns.pairplot(alertsDF_reduced, hue='Tier', aspect=1.5 )
-#plotReturns(30)
-
-#plt.show()
