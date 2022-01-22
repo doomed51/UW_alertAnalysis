@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
 import time
-
+pd.options.mode.chained_assignment = 'raise'
 #####
 # Retrieves relevant alerts from excel files
 #####
@@ -395,6 +395,7 @@ def generateSliceStats(alertsDF, sheetName = 'default'):
 #####
 def getSliceAlerts(alertsDF, sliceName):
     
+    # IF THE SLICENAME CANNOT BE FOUND THEN DEFAULT BEHAVIOUR IS TO RETURN ALL ALERTS
     selectedSlice = alertsDF
     
     if sliceName == '$vol<100K;OI<Vol':
@@ -456,7 +457,8 @@ def getSliceAlerts(alertsDF, sliceName):
 
     elif sliceName == 'alert>10days':
         selectedSlice = selectedSlice.loc[ ((datetime.today() - selectedSlice['Alert Date']).dt.days > 10)]
-
+    
+    #selectedSlice.loc[:, 'Slice Name'] = sliceName
     return selectedSlice.sort_values(by='Max Gain %', ascending=False)
 
 #####
@@ -516,34 +518,39 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
             
             # LINEGRAPH: plot returns over time, labeled by call and put
             x1 = fig.add_subplot(numRows, 2, count) # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.subplot.html
-            
-            x1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls' )
-            x1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts' )
+            x1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls', marker='o' )
+            x1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts', marker='o' )
             x1.set_title("%s - %s - Plot"%(slice, symbol))
+            x1.type = 'pointplot'
+            
             # HISTOGRAM: returns
             count +=1 #bump up index in gridspec 
             numBins = 10 #math.ceil((alertsDF['Max Gain %'].max() - alertsDF['Max Gain %'].min())/3)
             x2 = fig.add_subplot(numRows, 2, count)
-            x2.hist(alertsDF['Max Gain %'], color='tab:orange', bins=numBins)
+            x2.hist(alertsDF['Max Gain %'], color='tab:orange', bins=[20,50,100,250,500,1500])
             x2.set_title("%s - %s - Histo"%(slice, symbol))
 
         plt.show()
         plt.close(fig)
 
-def quickAnalysis(alertsDF):
-    symbolAlerts = alertsDF
+#####
+# Quick and dirty analysis of any list of alerts. Prints & Plots top slices
+# input: clean dataframe of alerts
+# output: slice stats, baseline alerts, baseline + top 4 slices 
+#####
+def quickAnalysis(alertsDF, sortby = 'Percent Above 100'):
+    symbolAlerts = alertsDF #this is just stupid 
 
-    sliceStats = generateSliceStats(symbolAlerts)
-    sliceStats.sort_values(by='Percent Above 100', inplace=True, ascending=False)
+    sliceStats = generateSliceStats(symbolAlerts) # get stats for the passed in alerts 
+    sliceStats.sort_values(by=sortby, inplace=True, ascending=False) #sort by whats most important
     
-    alertsInBestSlice = getSliceAlerts(symbolAlerts, sliceStats.iloc[0]['Slice Name'])
-    baseline = getSliceAlerts(symbolAlerts, 'baseline')
-    baseline['Slice Name'] = 'baseline'
+    alertsInBestSlice = getSliceAlerts(symbolAlerts, sliceStats.iloc[0]['Slice Name']) # get teh alerts in the best slice for plotting later 
+    baseline = getSliceAlerts(symbolAlerts, 'baseline') #always grab the baseline stats 
     
     listOfSlices = list()
     for n in range(4):
         alertsInSlice = getSliceAlerts(symbolAlerts, sliceStats.iloc[n]['Slice Name'])
-        alertsInSlice['Slice Name'] = sliceStats.iloc[n]['Slice Name'] #add slice name to the retrieved slice for later use
+        #alertsInSlice['Slice Name'] = sliceStats.iloc[n]['Slice Name'] #add slice name to the retrieved slice for later use
         alertsInSlice.reset_index(drop=True, inplace=True)
         listOfSlices.append(alertsInSlice)
     
@@ -584,23 +591,23 @@ def analyzeMyHunt(alertsDF):
 # compile slice stats for all 
 # rank slice stats by % above 100 and weighted by # alerts 
 # plot the return curves of the top 5 slices 
-def rankSymbolAlertSlices():
-    print('rankSymbolAlertSlices function is not done!!')
-    alertsMap = getAlerts('all symbols')
+def compareAllAlerts(sortby = 'Percent Above 100'):
+    alertsMap = getAlerts('all symbols') #returns dict of dataframes
     allSliceStats = pd.DataFrame()
     # TODO get BASELINE stats of all symbols 
 
-    for key in alertsMap:
-        print(key)
+    print(alertsMap.keys())
+    for key in alertsMap: # generate slice stats for all symbols in the dict of dataframes 
         symbolAlerts = cleanAlertsData(alertsMap[key])
         sliceStats = generateSliceStats(symbolAlerts)
         sliceStats = sliceStats.loc[sliceStats['Total Alerts'] > 10]
         allSliceStats = pd.concat([allSliceStats, sliceStats])
     
-    allSliceStats.sort_values(by='Percent Above 100', inplace=True, ascending=False)
+    allSliceStats.sort_values(by=sortby, inplace=True, ascending=False)
     allSliceStats.reset_index(drop=True, inplace = True)
     
-    print(allSliceStats)
+    # print the top 10 slices 
+    print(allSliceStats.head(10))
 
     listOfSlices = list()
     # plot the top 5 slices
@@ -620,7 +627,7 @@ def rankSymbolAlertSlices():
 ########## COMMAND ################
 ###################################
 
-rankSymbolAlertSlices()
+compareAllAlerts()
 #myAlerts = getAlerts('PTON')
 #quickAnalysis(myAlerts)
 
