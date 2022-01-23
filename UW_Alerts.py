@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, date
 from os import P_DETACH, replace
-from turtle import color
+from turtle import color, left
 from matplotlib.colors import LinearSegmentedColormap
 from numpy.core.defchararray import index
 from numpy.core.fromnumeric import partition
@@ -15,7 +15,8 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
 import time
-pd.options.mode.chained_assignment = 'raise'
+#pd.options.mode.chained_assignment = 'raise'
+
 #####
 # Retrieves relevant alerts from excel files
 #####
@@ -73,8 +74,6 @@ def getAlerts(symbolOrSheetName = 'all symbols'):
         print('')
 
         return cleanAlertsData(alertsDF_map[symbolOrSheetName])
-    
-           
     
 #####
 # Util function
@@ -462,30 +461,6 @@ def getSliceAlerts(alertsDF, sliceName):
     return selectedSlice.sort_values(by='Max Gain %', ascending=False)
 
 #####
-# Returns a dataframe that allows for comparisons between
-# alert stats of the passed in array of symbols
-#####
-def compareAlertSlices(sheetNames):
-    alertsDF_combined = pd.DataFrame()
-    
-    for mySheetName in sheetNames:
-        myAlerts = cleanAlertsData(alertsDF_map[mySheetName])
-        
-        if myAlerts['Symbol'].nunique() == 1:
-            alertsDF_combined = alertsDF_combined.append(
-            generateSliceStats(
-            myAlerts), ignore_index=True
-            )
-        
-        else:
-            alertsDF_combined = alertsDF_combined.append(
-            generateSliceStats(
-            myAlerts, sheetName=mySheetName), ignore_index=True
-            )
-        
-    return alertsDF_combined
-
-#####
 # Look for the most frequently occuring symbols
 #####
 def findSymbolsWithHighFrequency(cleanAlertsDF):
@@ -497,12 +472,14 @@ def findSymbolsWithHighFrequency(cleanAlertsDF):
 #####
 # Plot Max Gain % as the following: 
 # 1. Call/Put highs over time 
-# 2. highs histogram (call/put combined) 
+# 2. highs histogram (call/put combined)
 #####
 # TODO normalize the bins on the histogram so they are comparable between slices
 def plotReturns(alertsDF_list, title="Calls vs. Puts"): 
     numRows = len(alertsDF_list) # Set the size of the figure
-    
+    xaxis_timeEnd = date.today()
+    xaxis_timeStart = date(2021, 10, 1)
+
     with plt.style.context(("seaborn","ggplot")):
         fig = plt.figure(constrained_layout=True, figsize=(numRows * 3.2,10))
         specs = gridspec.GridSpec(ncols=2, nrows=numRows, figure=fig) ## Declaring 1xnumRows figure
@@ -512,6 +489,7 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
             symbol = alertsDF['Symbol'][0]
             slice = alertsDF['Slice Name'][0] 
             count += 1
+            
             alertsDF.sort_values(by='Alert Date', inplace=True, ascending=False)
             calls = alertsDF.loc[alertsDF['Option Type'] == 'Call']
             puts = alertsDF.loc[alertsDF['Option Type'] == 'Put']
@@ -521,13 +499,14 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
             x1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls', marker='o' )
             x1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts', marker='o' )
             x1.set_title("%s - %s - Plot"%(slice, symbol))
-            x1.type = 'pointplot'
-            
+            x1.set_xlim( left = xaxis_timeStart, right = xaxis_timeEnd )
+
             # HISTOGRAM: returns
             count +=1 #bump up index in gridspec 
             numBins = 10 #math.ceil((alertsDF['Max Gain %'].max() - alertsDF['Max Gain %'].min())/3)
             x2 = fig.add_subplot(numRows, 2, count)
-            x2.hist(alertsDF['Max Gain %'], color='tab:orange', bins=[20,50,100,250,500,1500])
+            #[-20, 0, 50, 100, 300, 500, 1500]
+            x2.hist(alertsDF['Max Gain %'], color='tab:orange', bins=[-20, 0, 50, 100, 300, 500, 1500],  rwidth = 0.3, edgecolor='black')
             x2.set_title("%s - %s - Histo"%(slice, symbol))
 
         plt.show()
@@ -539,7 +518,7 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
 # output: slice stats, baseline alerts, baseline + top 4 slices 
 #####
 def quickAnalysis(alertsDF, sortby = 'Percent Above 100'):
-    symbolAlerts = alertsDF #this is just stupid 
+    symbolAlerts = alertsDF 
 
     sliceStats = generateSliceStats(symbolAlerts) # get stats for the passed in alerts 
     sliceStats.sort_values(by=sortby, inplace=True, ascending=False) #sort by whats most important
@@ -591,7 +570,7 @@ def analyzeMyHunt(alertsDF):
 # compile slice stats for all 
 # rank slice stats by % above 100 and weighted by # alerts 
 # plot the return curves of the top 5 slices 
-def compareAllAlerts(sortby = 'Percent Above 100'):
+def compareAllSymbolAlerts(sortby = 'Percent Above 100'):
     alertsMap = getAlerts('all symbols') #returns dict of dataframes
     allSliceStats = pd.DataFrame()
     # TODO get BASELINE stats of all symbols 
@@ -599,10 +578,12 @@ def compareAllAlerts(sortby = 'Percent Above 100'):
     print(alertsMap.keys())
     for key in alertsMap: # generate slice stats for all symbols in the dict of dataframes 
         symbolAlerts = cleanAlertsData(alertsMap[key])
+        symbolAlerts.loc[symbolAlerts['Max Gain %']>50.5]
         sliceStats = generateSliceStats(symbolAlerts)
         sliceStats = sliceStats.loc[sliceStats['Total Alerts'] > 10]
         allSliceStats = pd.concat([allSliceStats, sliceStats])
     
+    # sort to get the top x slices 
     allSliceStats.sort_values(by=sortby, inplace=True, ascending=False)
     allSliceStats.reset_index(drop=True, inplace = True)
     
@@ -619,15 +600,18 @@ def compareAllAlerts(sortby = 'Percent Above 100'):
         listOfSlices.append(sliceAlerts)
     
     plotReturns( [listOfSlices[0], listOfSlices[1], listOfSlices[2], listOfSlices[3], listOfSlices[4] ])
-    
-    
 
-
+    return listOfSlices
+    
 ###################################
 ########## COMMAND ################
 ###################################
 
-compareAllAlerts()
+listOfSlices = compareAllSymbolAlerts()
+
+print('')
+print(listOfSlices[0])
+
 #myAlerts = getAlerts('PTON')
 #quickAnalysis(myAlerts)
 
@@ -706,3 +690,28 @@ def quickAnalysis_generalAlerts(sheetName):
     print('')
     print('Alerts in Best Slice')
     print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
+
+
+#####
+# Returns a dataframe that allows for comparisons between
+# alert stats of the passed in array of symbols
+#####
+def compareAlertSlices(sheetNames):
+    alertsDF_combined = pd.DataFrame()
+    
+    for mySheetName in sheetNames:
+        myAlerts = cleanAlertsData(alertsDF_map[mySheetName])
+        
+        if myAlerts['Symbol'].nunique() == 1:
+            alertsDF_combined = alertsDF_combined.append(
+            generateSliceStats(
+            myAlerts), ignore_index=True
+            )
+        
+        else:
+            alertsDF_combined = alertsDF_combined.append(
+            generateSliceStats(
+            myAlerts, sheetName=mySheetName), ignore_index=True
+            )
+        
+    return alertsDF_combined
