@@ -19,6 +19,7 @@ import time
 
 #####
 # Retrieves relevant alerts from excel files
+# default behaviour: get all Symbol specific alerts
 #####
 def getAlerts(symbolOrSheetName = 'all symbols'):
     # Location of the file that contains the alerts dump
@@ -27,25 +28,36 @@ def getAlerts(symbolOrSheetName = 'all symbols'):
         r"F:\workbench\UW_Alerts\UW_alerts_myHunt.xlsx"]
     print('')
     print('#########################################################')
-    print('Loading files ...')
+    print('Loading files for ...%s'%(symbolOrSheetName))
     start = time.perf_counter()
-    
     if symbolOrSheetName == 'all symbols':
+        print('loading worksheet...%s'%(filePaths[0]))
         workbook_symbol = load_workbook(filename=filePaths[0])
         alertsDF_map = pd.read_excel(filePaths[0], sheet_name=None)
     
-        print('Success!')
         print('')
-        
+        print('Success!')
         end = time.perf_counter()
-        print('Success!')
-        print('')
         print(f"Elapsed Time: {end - start:0.4f} seconds")
         print('#########################################################')
         print('')
         return alertsDF_map
+
+    elif symbolOrSheetName == 'All Alerts':
+        print('loading worksheet...%s'%(filePaths[1]))
+        workbook = load_workbook(filename=filePaths[1])
+        alertsDF_map = pd.read_excel(filePaths[1], sheet_name=None)
+
+        print('')
+        print('Success!')
+        end = time.perf_counter()
+        print(f"Elapsed Time: {end - start:0.4f} seconds")
+        print('#########################################################')
+        print('')
+        return cleanAlertsData(alertsDF_map['All Alerts'])
     
     else:
+        print('loading worksheet...ALL!!')
         workbook_symbol = load_workbook(filename=filePaths[0])
         workbook = load_workbook(filename=filePaths[1])
         workbook_myHunt = load_workbook(filename=filePaths[2])
@@ -63,12 +75,9 @@ def getAlerts(symbolOrSheetName = 'all symbols'):
             print("Sheet not found!!")
             exit()
 
-        print('Success!')
         print('')
-        
+        print('Success!')
         end = time.perf_counter()
-        print('Success!')
-        print('')
         print(f"Elapsed Time: {end - start:0.4f} seconds")
         print('#########################################################')
         print('')
@@ -292,8 +301,12 @@ def generalAlertStats(alertsDF1, sliceName = 'default', sheetName = 'default'):
 # that the passed in alerts are for a single symbol
 #####
 def generateSliceStats(alertsDF, sheetName = 'default'):
-    
-    alertSlices = generalAlertStats(alertsDF, 'baseline-%s'%(alertsDF['Symbol'][0]), sheetName=sheetName)
+    alertSlices = pd.DataFrame
+
+    if alertsDF['Symbol'].nunique() == 1:
+        alertSlices = generalAlertStats(alertsDF, 'baseline-%s'%(alertsDF['Symbol'][0]), sheetName=sheetName)
+    else:
+        alertSlices = generalAlertStats(alertsDF, 'baseline', sheetName=sheetName)
     
     alertsDF_reduced = alertsDF.loc[ ( (alertsDF['Total $'] < 100000) & (alertsDF['OI'] < alertsDF['Volume']))]
     if not alertsDF_reduced.empty:
@@ -387,7 +400,7 @@ def generateSliceStats(alertsDF, sheetName = 'default'):
 
     # alertsDF['DTE'] = (alertsDF['Expiry'] - alertsDF['Alert Date']).dt.days
 
-    return alertSlices
+    return alertSlices.sort_values(by='Percent Above 100', ascending=False)
 
 #####
 # Takes in any Alerts dump and returns the alerts that are within the passed in sliceName
@@ -478,7 +491,7 @@ def findSymbolsWithHighFrequency(cleanAlertsDF):
 def plotReturns(alertsDF_list, title="Calls vs. Puts"): 
     numRows = len(alertsDF_list) # Set the size of the figure
     xaxis_timeEnd = date.today()
-    xaxis_timeStart = date(2021, 10, 1)
+    xaxis_timeStart = date(2021, 8, 22)
 
     with plt.style.context(("seaborn","ggplot")):
         fig = plt.figure(constrained_layout=True, figsize=(numRows * 3.2,10))
@@ -486,8 +499,13 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
         
         count = 0 
         for alertsDF in alertsDF_list:
-            symbol = alertsDF['Symbol'][0]
-            slice = alertsDF['Slice Name'][0] 
+            
+            if alertsDF['Symbol'].nunique() == 1:
+                symbol = alertsDF['Symbol'][0]
+                slice = alertsDF['Slice Name'].values[0]
+            else:
+                symbol = ''
+                slice = alertsDF['Slice Name'].values[0]
             count += 1
             
             alertsDF.sort_values(by='Alert Date', inplace=True, ascending=False)
@@ -525,12 +543,14 @@ def quickAnalysis(alertsDF, sortby = 'Percent Above 100'):
     
     alertsInBestSlice = getSliceAlerts(symbolAlerts, sliceStats.iloc[0]['Slice Name']) # get teh alerts in the best slice for plotting later 
     baseline = getSliceAlerts(symbolAlerts, 'baseline') #always grab the baseline stats 
-    
+    baseline['Slice Name'] = 'baseline'
+
     listOfSlices = list()
     for n in range(4):
         alertsInSlice = getSliceAlerts(symbolAlerts, sliceStats.iloc[n]['Slice Name'])
         #alertsInSlice['Slice Name'] = sliceStats.iloc[n]['Slice Name'] #add slice name to the retrieved slice for later use
         alertsInSlice.reset_index(drop=True, inplace=True)
+        alertsInSlice['Slice Name'] = sliceStats.iloc[n]['Slice Name']
         listOfSlices.append(alertsInSlice)
     
     print('')
@@ -594,26 +614,75 @@ def compareAllSymbolAlerts(sortby = 'Percent Above 100'):
     # plot the top 5 slices
     for n in range(5):
         symbol = allSliceStats['Symbol'][n]
-        sliceAlerts = getSliceAlerts( cleanAlertsData(alertsMap[symbol]), allSliceStats['Slice Name'][n] )
-        sliceAlerts.reset_index(drop=True, inplace=True)
-        sliceAlerts['Slice Name'] = allSliceStats['Slice Name'][n]
-        listOfSlices.append(sliceAlerts)
+        alertsInSlice = getSliceAlerts( cleanAlertsData(alertsMap[symbol]), allSliceStats['Slice Name'][n] )
+        alertsInSlice.reset_index(drop=True, inplace=True)
+        alertsInSlice['Slice Name'] = allSliceStats['Slice Name'][n]
+        listOfSlices.append(alertsInSlice)
     
     plotReturns( [listOfSlices[0], listOfSlices[1], listOfSlices[2], listOfSlices[3], listOfSlices[4] ])
 
     return listOfSlices
+
+#####
+# Objective: Spit out descriptive stats, and top slices for a large data dump 
+# of general alerts from the UW Alerts feed
+#####
+def compareAllGeneralAlerts():
+    print('analysis incomplete!')
+    alertsDF = getAlerts('All Alerts')
+    startDate = alertsDF['Alert Date'].astype(str).min()
+    endDate = alertsDF['Alert Date'].astype(str).max()
+
+    sliceStats = generateSliceStats(alertsDF, 'All Alerts')
+    print('')
+    print('Time Range = %s - %s (%s Days)'%(startDate, endDate, (alertsDF['Alert Date'].max() - alertsDF['Alert Date'].min()).days
+    ))
+    print('Total Alerts: %d'%(alertsDF['Alert Date'].count()))
+    print('')
+    sliceStats.reset_index(drop=True, inplace=True)
+    print(sliceStats.head(10))
+
+    listOfSlices = list()
+    # plot the top 5 slices
+    for n in range(5):
+        sliceAlerts = getSliceAlerts(alertsDF, sliceStats['Slice Name'][n] )
+     #   sliceAlerts.reset_index(drop=True, inplace=True)
+        sliceAlerts['Slice Name'] = sliceStats['Slice Name'][n]
+        listOfSlices.append(sliceAlerts)
     
+    baseline = getSliceAlerts(alertsDF, 'baseline')
+    baseline['Slice Name'] = 'baseline'
+    
+    #plotReturns( [baseline, listOfSlices[0], listOfSlices[1], listOfSlices[2], listOfSlices[3], listOfSlices[4] ])
+
+    return sliceStats
+    
+#####
+# prints statistical profile of general alerts
+#####
+def frequencyAnalysis_genAlerts(alertsDF):
+    print('im not ready yet')
+    #groupedAlerts = cleanAlertsDF.groupby(by='Symbol').count()
+    groupedAlerts = alertsDF.groupby(by='Symbol').agg({ 'Max Gain %' : ['count', 'max', 'min', 'mean', 'std'] })['Max Gain %'].sort_values(by='count', ascending=False)
+    
+    print('Alerts sorted by count, stats on Max Gain %: ')
+    print(groupedAlerts.head(10))
+
+
 ###################################
 ########## COMMAND ################
 ###################################
 
-listOfSlices = compareAllSymbolAlerts()
+#listOfSlices = compareAllSymbolAlerts()
+#sliceStatsForAllAlerts = compareAllGeneralAlerts()
+#allAlerts = getAlerts('All Alerts')
+#frequencyAnalysis_genAlerts(allAlerts)
 
-print('')
-print(listOfSlices[0])
+#print('')
+#print(listOfSlices[0])
 
-#myAlerts = getAlerts('PTON')
-#quickAnalysis(myAlerts)
+myAlerts = getAlerts('JD')
+quickAnalysis(myAlerts)
 
 #analyzeMyHunt(myAlerts)
 #print(myAlerts.columns)
