@@ -491,7 +491,7 @@ def findSymbolsWithHighFrequency(cleanAlertsDF):
 def plotReturns(alertsDF_list, title="Calls vs. Puts"): 
     numRows = len(alertsDF_list) # Set the size of the figure
     xaxis_timeEnd = date.today()
-    xaxis_timeStart = date(2021, 8, 22)
+    xaxis_timeStart = date(2021, 11, 22)
 
     with plt.style.context(("seaborn","ggplot")):
         fig = plt.figure(constrained_layout=True, figsize=(numRows * 3.2,10))
@@ -501,11 +501,9 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
         for alertsDF in alertsDF_list:
             
             if alertsDF['Symbol'].nunique() == 1:
-                symbol = alertsDF['Symbol'][0]
-                slice = alertsDF['Slice Name'].values[0]
+                xAxis_title = alertsDF['Symbol'][0] + alertsDF['Slice Name'].values[0]
             else:
-                symbol = ''
-                slice = alertsDF['Slice Name'].values[0]
+                xAxis_title = alertsDF['Slice Name'].values[0]
             count += 1
             
             alertsDF.sort_values(by='Alert Date', inplace=True, ascending=False)
@@ -516,7 +514,7 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
             x1 = fig.add_subplot(numRows, 2, count) # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.subplot.html
             x1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls', marker='o' )
             x1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts', marker='o' )
-            x1.set_title("%s - %s - Plot"%(slice, symbol))
+            x1.set_title("%s - Plot"%(xAxis_title))
             x1.set_xlim( left = xaxis_timeStart, right = xaxis_timeEnd )
 
             # HISTOGRAM: returns
@@ -525,7 +523,7 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
             x2 = fig.add_subplot(numRows, 2, count)
             #[-20, 0, 50, 100, 300, 500, 1500]
             x2.hist(alertsDF['Max Gain %'], color='tab:orange', bins=[-20, 0, 50, 100, 300, 500, 1500],  rwidth = 0.3, edgecolor='black')
-            x2.set_title("%s - %s - Histo"%(slice, symbol))
+            x2.set_title("%s - Histo"%(xAxis_title))
 
         plt.show()
         plt.close(fig)
@@ -681,7 +679,7 @@ def frequencyAnalysis_genAlerts(alertsDF):
 #print('')
 #print(listOfSlices[0])
 
-myAlerts = getAlerts('JD')
+myAlerts = getAlerts('SPY')
 quickAnalysis(myAlerts)
 
 #analyzeMyHunt(myAlerts)
