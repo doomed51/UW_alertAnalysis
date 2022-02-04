@@ -1,4 +1,5 @@
 from datetime import datetime, date
+from importlib.resources import path
 from os import P_DETACH, replace
 from turtle import color, left
 from matplotlib.colors import LinearSegmentedColormap
@@ -9,6 +10,7 @@ from numpy.testing._private.nosetester import run_module_suite
 from openpyxl import workbook, load_workbook
 from openpyxl.worksheet import worksheet
 from sklearn.cluster import KMeans
+from pathlib import Path
 
 import pandas as pd 
 import matplotlib.pyplot as plt
@@ -18,8 +20,8 @@ import time
 #pd.options.mode.chained_assignment = 'raise'
 
 #####
-# Retrieves relevant alerts from excel files
-# default behaviour: get all Symbol specific alerts
+# Read in alerts excel as dataframe 
+# returns a clean dataframe 
 #####
 def getAlerts(symbolOrSheetName = 'all symbols'):
     # Location of the file that contains the alerts dump
@@ -54,8 +56,21 @@ def getAlerts(symbolOrSheetName = 'all symbols'):
         print(f"Elapsed Time: {end - start:0.4f} seconds")
         print('#########################################################')
         print('')
-        return cleanAlertsData(alertsDF_map['All Alerts'])
+        return cleanAlertsData(alertsDF_map[symbolOrSheetName])
     
+    elif symbolOrSheetName == 'My Hunt':
+        print('loading worksheet...%s'%(filePaths[2]))
+        workbook = load_workbook(filename=filePaths[2])
+        alertsDF_map = pd.read_excel(filePaths[2], sheet_name=None)
+
+        print('')
+        print('Success!')
+        end = time.perf_counter()
+        print(f"Elapsed Time: {end - start:0.4f} seconds")
+        print('#########################################################')
+        print('')
+        return cleanAlertsData(alertsDF_map[symbolOrSheetName])
+
     else:
         print('loading worksheet...ALL!!')
         workbook_symbol = load_workbook(filename=filePaths[0])
@@ -83,6 +98,17 @@ def getAlerts(symbolOrSheetName = 'all symbols'):
         print('')
 
         return cleanAlertsData(alertsDF_map[symbolOrSheetName])
+
+#####
+# Objective:    Print passed in dataframe to passed in filename
+#####
+def printAlertsToFile(alertsDF, filename='genericAlert.csv'):
+    print('')
+    
+    filepath = Path('output/'+filename+'.csv')
+    print('Printing file: %s'%(filepath))
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    alertsDF.to_csv(filepath, index=False)
     
 #####
 # Util function
@@ -139,8 +165,15 @@ def cleanAlertsData(alertsDF):
     # Clean up Max Gain columns
     # split into individual $ and % columns
     # recast columns to ensure they are floats 
-    # drop the old columns 
-    alertsDF[['Max Gain', 'Max Gain %']] = alertsDF['High'].str.split(' ', expand=True)
+    # drop the old columns
+    
+    # if  $ index is lower than % index then $ first and % second 
+    sample = alertsDF['High'][0]
+    if sample.find('%') < sample.find('$'):
+        alertsDF[['Max Gain %', 'Max Gain']] = alertsDF['High'].str.split(' ', expand=True)
+    else:
+        alertsDF[['Max Gain', 'Max Gain %']] = alertsDF['High'].str.split(' ', expand=True)
+    
     alertsDF['Max Gain'] = alertsDF['Max Gain'].str.replace('$', '', regex=True)
     alertsDF['Max Gain'] = alertsDF['Max Gain'].str.replace(',', '', regex=True)
     alertsDF['Max Gain %'] = alertsDF['Max Gain %'].str.replace(')', '', regex=True)
@@ -153,7 +186,11 @@ def cleanAlertsData(alertsDF):
     # Clean up Max Loss columns
     # split into individual $ and % columns
     # recast columns to ensure they are floats
-    alertsDF[['Max Loss', 'Max Loss %']] = alertsDF['Low'].str.split(' ', expand=True)
+    sample = alertsDF['Low'][0]
+    if sample.find('%') < sample.find('$'):
+        alertsDF[['Max Loss %', 'Max Loss']] = alertsDF['Low'].str.split(' ', expand=True)
+    else: 
+        alertsDF[['Max Loss', 'Max Loss %']] = alertsDF['Low'].str.split(' ', expand=True)
     alertsDF['Max Loss'] = alertsDF['Max Loss'].str.replace('$', '', regex=True)
     alertsDF['Max Loss'] = alertsDF['Max Loss'].str.replace(',', '', regex=True)
     alertsDF['Max Loss %'] = alertsDF['Max Loss %'].str.replace(')', '', regex=True)
@@ -512,8 +549,8 @@ def plotReturns(alertsDF_list, title="Calls vs. Puts"):
             
             # LINEGRAPH: plot returns over time, labeled by call and put
             x1 = fig.add_subplot(numRows, 2, count) # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.subplot.html
-            x1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls', marker='o' )
-            x1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts', marker='o' )
+            x1.plot( calls['Alert Date'], calls['Max Gain %'], color = 'g',label='Calls', marker='o')
+            x1.plot( puts['Alert Date'], puts['Max Gain %'], color = 'r', label='Puts', marker='o')
             x1.set_title("%s - Plot"%(xAxis_title))
             x1.set_xlim( left = xaxis_timeStart, right = xaxis_timeEnd )
 
@@ -566,20 +603,6 @@ def quickAnalysis(alertsDF, sortby = 'Percent Above 100'):
     print(sliceStats)
     
     plotReturns([baseline, listOfSlices[0], listOfSlices[1], listOfSlices[2], listOfSlices[3]])
-
-#####
-# Summarize basic stats by 'watchlist' 
-# for each watchlist plt scatters comparing all cols 
-#####
-def analyzeMyHunt(alertsDF):
-    # for each unique watchlist in the passed in alertsDF
-    # #alerts, avg max gain, std deviation of max gain
-    summary = alertsDF.groupby(by='Watchlist').agg({ 'Max Gain %' : ['count', 'mean', 'min', 'max', 'std'] })
-
-    print(summary)
-
-    plotReturns(alertsDF)
-    #result = df.groupby('Type').agg({'top_speed(mph)': ['mean', 'min', 'max']})
 
 #####
 # Objective: Visualize return characterisitcs of the top 5 slices for all available Symbol alerts 
@@ -654,9 +677,24 @@ def compareAllGeneralAlerts():
     #plotReturns( [baseline, listOfSlices[0], listOfSlices[1], listOfSlices[2], listOfSlices[3], listOfSlices[4] ])
 
     return sliceStats
-    
+
 #####
-# prints statistical profile of general alerts
+# Summarize basic stats by 'watchlist' 
+# for each watchlist plt scatters comparing all cols 
+#####
+def analyzeMyHunt(alertsDF):
+    # for each unique watchlist in the passed in alertsDF
+    # #alerts, avg max gain, std deviation of max gain
+    summary = alertsDF.groupby(by='Watchlist').agg({ 'Max Gain %' : ['count', 'mean', 'min', 'max', 'std'] })
+
+    print(summary)
+
+    #result = df.groupby('Type').agg({'top_speed(mph)': ['mean', 'min', 'max']})
+
+#####
+# Objective: Help find symbols with higher frequency of higher returns (where
+# alerts are most recent).
+# Prints statistical profile of general alerts based grouping by Symbols. 
 #####
 def frequencyAnalysis_genAlerts(alertsDF):
     print('im not ready yet')
@@ -666,9 +704,27 @@ def frequencyAnalysis_genAlerts(alertsDF):
     print('Alerts sorted by count, stats on Max Gain %: ')
     print(groupedAlerts.head(10))
 
+#####
+# Objective: Spit out a list of options that can be 
+# consumed by Zorro to backtest the options signals  
+# Use case 1: SPY - Chain, Alert Date, Ask
+###
+# input: clean list of alerts
+# output: print to cmd, and print to csv 
+#           Alert Date, Symbol, Type, Strike, Expiry, Ask
+#####
+def zorro_generateOptionSignal(alertsDF):
+    print('zorro_generateOptionSignal - function not complete!!')
+
+    alertsDF_simplified = alertsDF[['Alert Date', 'Symbol', 'Option Type', 'Strike', 'Expiry', 'Ask', 'Max Gain %']]
+    printAlertsToFile(alertsDF_simplified, 'SPY-simple')
+    #print(alertsDF_simplified)
+
+
+
 
 ###################################
-########## COMMAND ################
+##########                             COMMAND 
 ###################################
 
 #listOfSlices = compareAllSymbolAlerts()
@@ -679,10 +735,12 @@ def frequencyAnalysis_genAlerts(alertsDF):
 #print('')
 #print(listOfSlices[0])
 
-myAlerts = getAlerts('SPY')
-quickAnalysis(myAlerts)
+myAlerts = getAlerts('My Hunt')
+#quickAnalysis(myAlerts)
+#print(myAlerts.columns)
+#zorro_generateOptionSignal(myAlerts)
 
-#analyzeMyHunt(myAlerts)
+analyzeMyHunt(myAlerts)
 #print(myAlerts.columns)
 
 ###################################
@@ -707,78 +765,3 @@ quickAnalysis(myAlerts)
 #############################################   ##################
 ########################## UNUSED FUNCTIONS     ##################
 #############################################   ##################
-
-#####
-# Create slices of alertsDF data based on the % return
-# for easier analysis 
-#####
-# TODO deprecate this function....
-# 
-# TODO make this function actually return a dataframe
-# TODO add .copy() to df selection
-# TODO append the slices into 1 data frame 
-# TODO have to escape empty dataframe results on the .loc
-def createSlices_maxGain(alertsDF):
-    maxGainSlices = pd.DataFrame()
-    
-    below0 = alertsDF.loc[alertsDF['Max Gain %'] <= 0].copy()
-    below0['Slice'] = 'below50'
-    
-    below50 = alertsDF.loc[(alertsDF['Max Gain %'] <= 50) & (alertsDF['Max Gain %'] > 0)].copy()
-    below50['Slice'] = 'below50'
-    maxGainSlices.append(below0, below50)
-    below100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 100) & (alertsDF['Max Gain %'] > 50)]
-    over100 = alertsDF.loc[(alertsDF['Max Gain %'] <= 200) & (alertsDF['Max Gain %'] > 100)]
-    over200 = alertsDF.loc[(alertsDF['Max Gain %'] <= 1000) & (alertsDF['Max Gain %'] > 200)]
-    over1000 = alertsDF.loc[(alertsDF['Max Gain %'] > 1000)]
-
-#############
-################### DEPRECATED
-#############
-def quickAnalysis_generalAlerts(sheetName):
-    print('')
-    print('Quick Analysis on:', sheetName)
-    
-    allAlerts = cleanAlertsData(alertsDF_map[sheetName])
-    
-    allAlerts_sliceStats = generateSliceStats(allAlerts, sheetName)
-    
-    selectSlices = allAlerts_sliceStats.loc[allAlerts_sliceStats['Total Alerts'] > 10]
-    bestSlice = selectSlices.loc[ (selectSlices['Percent Above 100'] == selectSlices['Percent Above 100'].max()) ]['Slice Name']
-
-    alertsInBestSlice = getSliceAlerts(allAlerts, bestSlice.iloc[0])
-
-    print('')
-    print('Slice Stats')
-    print(allAlerts_sliceStats.sort_values(by='Percent Above 100', ascending=False))
-    print('')
-    print('Best Slice:', bestSlice.iloc[0])
-    print(selectSlices.loc[ (selectSlices['Percent Above 100'] == selectSlices['Percent Above 100'].max())])
-    print('')
-    print('Alerts in Best Slice')
-    print(alertsInBestSlice.sort_values(by='Alert Date', ascending=False).head(30)[['Symbol', 'Strike', 'Option Type', 'Expiry', 'Ask', 'Max Gain %', 'Total $', 'IV', 'OI', 'Alert Date']])
-
-
-#####
-# Returns a dataframe that allows for comparisons between
-# alert stats of the passed in array of symbols
-#####
-def compareAlertSlices(sheetNames):
-    alertsDF_combined = pd.DataFrame()
-    
-    for mySheetName in sheetNames:
-        myAlerts = cleanAlertsData(alertsDF_map[mySheetName])
-        
-        if myAlerts['Symbol'].nunique() == 1:
-            alertsDF_combined = alertsDF_combined.append(
-            generateSliceStats(
-            myAlerts), ignore_index=True
-            )
-        
-        else:
-            alertsDF_combined = alertsDF_combined.append(
-            generateSliceStats(
-            myAlerts, sheetName=mySheetName), ignore_index=True
-            )
-        
-    return alertsDF_combined
